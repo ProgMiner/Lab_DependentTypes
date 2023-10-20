@@ -202,9 +202,9 @@ ggg = g
 -- 5. Еще примеры утверждений и доказательств: ассоциативность сложения натуральных чисел.
 
 -- Ассоциативность + доказывается индукцией по z (так как + определен рекурсией по правому аргументу).
-\func +-assoc (x y z : Nat) : (x + y) + z = x + (y + z) \elim x
+\func +-assoc {x y z : Nat} : (x + y) + z = x + (y + z) \elim x
   | 0 => idp
-  | suc x => pmap suc (+-assoc x y z)
+  | suc x => pmap suc +-assoc
 
 \func foox {A B C : \Type} (f : A -> B) (g : B -> C) {x y : A} (p : x = y) : g (f x) = g (f y)
   => pmap g (pmap f p)
@@ -221,9 +221,9 @@ ggg = g
 -- \func foow' {A B C : \Type} (f : A -> B) (g : B -> C) {x y : A} (p : f x = f y) : g (f x) = g (f y)
 --   => cong {?}
 
-\func +-comm (x y : Nat) : x + y = y + x \elim x
+\func +-comm {x y : Nat} : x + y = y + x \elim x
   | 0 => idp
-  | suc x => pmap suc (+-comm x y)
+  | suc x => pmap suc +-comm
 
 \func \infixl 6 +' (x y : Nat) : Nat \elim y
   | 0 => x
