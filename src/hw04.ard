@@ -1,71 +1,176 @@
-\import Data.Bool
-\import lect04
+\import Arith.Nat
+\import Data.List
+\import Function
+\import Function.Meta
+\import Order.StrictOrder
+\import Paths
+\import lect04 \hiding (nil, tail)
+\open Nat(+,*)
 
 -- 1. Напишите функцию lookup, которая принимает List A и натуральное число и возвращает элемент по заданому индексу.
 --    В общем случае эту функцию определить невозможно, т.к. индекс может быть больше, чем число элементов в списке.
---    Поэтому эта функция должна дополнительно еще принимать доказательство того, что индекс находится в допустимых границах, в виде T (n < length xs).
+--    Поэтому эта функция должна дополнительно еще принимать доказательство того,
+--    что индекс находится в допустимых границах, в виде T (n < length xs).
 
-\func \infix 4 < (x y : Nat) : Bool
-  | 0, 0 => false
-  | 0, suc y => true
-  | suc x, 0 => false
-  | suc x, suc y => x < y
+-- \func \infix 4 < (x y : Nat) : Bool
+--   | 0, 0 => false
+--   | 0, suc y => true
+--   | suc x, 0 => false
+--   | suc x, suc y => x < y
 
-\func lookup => {?}
+\func lookup {A : \Type} (xs : List A) (i : Nat) (p : i < length xs) : A
+  | a :: xs, 0, _ => a
+  | a :: xs, suc i, NatSemiring.suc<suc p => lookup xs i p
 
--- 2. Реализуйте аналоги функции replicate для vec и Vec (эта функция создает список заданной длины, состоящий из повторений данного элемента).
+-- 2. Реализуйте аналоги функции replicate для vec и Vec
+--    (эта функция создает список заданной длины, состоящий из повторений данного элемента).
+
+\func replicate {A : \Type} (a : A) (n : Nat) : vec A n \elim n
+  | 0 => ()
+  | suc n => (a, replicate a n)
+
+\func replicate' {A : \Type} (a : A) (n : Nat) : Vec A n \elim n
+  | 0 => Vec.nil
+  | suc n => cons a (replicate' a n)
 
 -- 3. Реализуйте аналоги функции map для vec и Vec.
+
+\func vmap {A B : \Type} {n : Nat} (f : A -> B) (xs : vec A n) : vec B n \elim n, xs
+  | 0, () => ()
+  | suc n, (x, xs) => (f x, vmap f xs)
+
+\func vmap' {A B : \Type} {n : Nat} (f : A -> B) (xs : Vec A n) : Vec B n \elim n, xs
+  | 0, Vec.nil => Vec.nil
+  | suc n, cons x xs => cons (f x) (vmap' f xs)
 
 -- 4. Реализуйте аналоги функции zipWith для vec и Vec.
 --    Функция должна принимать вектора одинаковой длины.
 
--- 5. Определите тип CTree A n полных бинарных деревьев высоты ровно n, которые хранят элементы только во внутренних узлах, но не в листьях.
+\func vzipWith {A B C : \Type} (f : A -> B -> C) {n : Nat} (xs : vec A n) (ys : vec B n) : vec C n \elim n, xs, ys
+  | 0, _, _ => ()
+  | suc n, (x, xs), (y, ys) => (f x y, vzipWith f xs ys)
+
+\func vzipWith' {A B C : \Type} (f : A -> B -> C) {n : Nat} (xs : Vec A n) (ys : Vec B n) : Vec C n \elim n, xs, ys
+  | 0, _, _ => Vec.nil
+  | suc n, cons x xs, cons y ys => cons (f x y) (vzipWith' f xs ys)
+
+-- 5. Определите тип CTree A n полных бинарных деревьев высоты ровно n,
+--    которые хранят элементы только во внутренних узлах, но не в листьях.
 --    Высота листа равна 0.
 
-\data CTree (A : \Type) (n : Nat)
+\data CTree (A : \Type) (n : Nat) \elim n
+  | 0 => cleaf
+  | suc n => cbranch (CTree A n) A (CTree A n)
 
--- 6. Определите тип Tree A n бинарных деревьев высоты не больше n, которые хранят элементы только во внутренних узлах, но не в листьях.
+-- 6. Определите тип Tree A n бинарных деревьев высоты не больше n,
+--    которые хранят элементы только во внутренних узлах, но не в листьях.
 --    Высота листа равна 0.
 
-\data Tree (A : \Type) (n : Nat)
+\data Tree (A : \Type) (n : Nat) \elim n
+  | n => leaf
+  | suc n => branch (Tree A n) A (Tree A n)
 
 -- определите функцию, возвращающую высоту дерева.
 
-\func height {A : \Type} (n : Nat) (t : Tree A n) : Fin (suc n) => {?}
+\func maxFin {n : Nat} (a : Fin n) (b : Fin n) : Fin n \elim n, a, b
+  | suc _, fzero, fzero => fzero
+  | suc _, fzero, fsuc b => fsuc b
+  | suc _, fsuc a, fzero => fsuc a
+  | suc _, fsuc a, fsuc b => fsuc (maxFin a b)
+
+\func height {A : \Type} {n : Nat} (t : Tree A n) : Fin (suc n) \elim n, t
+  | 0, leaf => fzero
+  | suc _, leaf => fzero
+  | suc _, branch l a r => fsuc (height l `maxFin` height r)
 
 -- Optional task
 -- 7. Функции Fin n -> A соответствуют спискам элементов A длины n.
 --     Функция, преобразующая Vec A n в Fin n -> A, была реализована на лекции.
 --     Реализуйте обратную функцию.
 
-\func coin {A : \Type} {n : Nat} (f : Fin n -> A) : Vec A n => {?}
+\func coin {A : \Type} {n : Nat} (f : Fin n -> A) : Vec A n \elim n
+  | 0 => Vec.nil
+  | suc n => cons (f fzero) (coin (\lam x => f (fsuc x)))
+
+\func coin'inv'lookup {A : \Type} {n : Nat} {xs : Vec A n} : coin (lect04.lookup xs) = xs \elim n, xs
+  | 0, Vec.nil => idp
+  | suc _, cons a _ => pmap (\lam xs => cons a xs) coin'inv'lookup
 
 -- Optional task
 -- 8. Определите тип матриц и ряд функций над ними.
 
-\func Mat (A : \Type) (n m : Nat) : \Type => {?}
+\func Mat (A : \Type) (n m : Nat) : \Type => Vec (Vec A m) n
 
 -- диагональная матрица с элементами e на диагонали и z на остальных позициях.
 
-\func diag {A : \Type} (z e : A) (n : Nat) : Mat A n n => {?}
+\func diag {A : \Type} (z e : A) (n : Nat) : Mat A n n \elim n
+  | 0 => Vec.nil
+  | suc n => cons
+      (cons e $ replicate' z n)
+      (vmap' (\lam v => cons z v) $ diag z e n)
+
+\func diag'test1 : diag 0 1 3 = ( cons (cons 1 $ cons 0 $ cons 0 Vec.nil)
+                                $ cons (cons 0 $ cons 1 $ cons 0 Vec.nil)
+                                $ cons (cons 0 $ cons 0 $ cons 1 Vec.nil)
+                                  Vec.nil)
+  => idp
 
 -- транспонирование матриц
 
-\func transpose {A : \Type} {n m : Nat} (M : Mat A n m) : Mat A m n => {?}
+\func transpose {A : \Type} {n m : Nat} (M : Mat A n m) : Mat A m n \elim n, M
+  | 0, Vec.nil => replicate' Vec.nil m
+  | suc n, cons a v => vzipWith' cons a $ transpose v
 
 -- сложение матриц
 
-\func matAdd {A : \Type} (add : A -> A -> A) (n m : Nat) (M N : Mat A n m) : Mat A n m => {?}
+\func matAdd {A : \Type} (add : A -> A -> A) {n m : Nat} (M N : Mat A n m) : Mat A n m \elim n, M, N
+  | 0, Vec.nil, Vec.nil => Vec.nil
+  | suc _, cons a as, cons b bs => cons (vzipWith' add a b) $ matAdd add as bs
 
 -- умножение матриц
 
 -- z ─ нейтральный элемент по сложению.
-\func matMul {A : \Type} (z : A) (add mul : A -> A -> A) (n m k : Nat) (M : Mat A n m) (N : Mat A m k) : Mat A n k => {?}
+\func matMul {A : \Type} (z : A) (add mul : A -> A -> A) {n m k : Nat} (M : Mat A n m) (N : Mat A m k) : Mat A n k \elim n, M
+  | 0, Vec.nil => Vec.nil
+  | suc n, cons a as => cons (vmap' (\lam v => vsum $ vzipWith' mul a v) $ transpose N) $ matMul z add mul as N
+  \where {
+
+    \func vsum {n : Nat} (xs : Vec A n) : A \elim n, xs
+      | 0, Vec.nil => z
+      | suc _, cons a xs => add a $ vsum xs
+  }
+
+\func matMul'test : matMul 0 (+) (*) A B = C => idp \where {
+
+  \func A : Mat Nat 2 3 => cons (cons 1 $ cons 2 $ cons 3 Vec.nil)
+                         $ cons (cons 4 $ cons 5 $ cons 6 Vec.nil)
+                           Vec.nil
+
+  \func B : Mat Nat 3 4 => cons (cons 1 $ cons 4 $ cons 7 $ cons 10 Vec.nil)
+                         $ cons (cons 2 $ cons 5 $ cons 8 $ cons 11 Vec.nil)
+                         $ cons (cons 3 $ cons 6 $ cons 9 $ cons 12 Vec.nil)
+                           Vec.nil
+
+  \func C : Mat Nat 2 4 => cons (cons 14 $ cons 32 $ cons 50 $ cons 68 Vec.nil)
+                         $ cons (cons 32 $ cons 77 $ cons 122 $ cons 167 Vec.nil)
+                           Vec.nil
+}
 
 -- 9. Определите факториал через Nat-rec.
 
+\func fact (n : Nat) : Nat => Nat-rec Nat 1 (\lam n' acc => suc n' * acc) n
+
+\func fact'test1 : fact 0 = 1 => idp
+\func fact'test2 : fact 1 = 1 => idp
+\func fact'test3 : fact 4 = 24 => idp
+
 -- 10. Докажите ассоциативность сложения для натуральных чисел через Nat-elim.
+
+\func +-assoc {n m k : Nat} : (n + m) + k = n + (m + k) => Nat-elim
+    (\lam n' => (n' + m) + k = n' + (m + k))
+    idp
+    (\lam n' acc => pmap suc acc)
+    n
 
 -- 11. Определите рекурсор и элиминатор для D.
 
@@ -74,6 +179,23 @@
   | con2 D D
   | con3 (Nat -> D)
 
+\func D-elim (T : D -> \Type)
+             (c1 : \Pi (n : Nat) -> T (con1 n))
+             (c2 : \Pi (d1 d2 : D) -> T d1 -> T d2 -> T (con2 d1 d2))
+             (c3 : \Pi (f : Nat -> D) -> (\Pi (n : Nat) -> T (f n)) -> T (con3 f))
+             (d : D)
+  : T d \elim d
+  | con1 n => c1 n
+  | con2 d1 d2 => c2 d1 d2 (D-elim T c1 c2 c3 d1) (D-elim T c1 c2 c3 d2)
+  | con3 f => c3 f $ \lam n => D-elim T c1 c2 c3 $ f n
+
+\func D-rec (T : \Type)
+            (c1 : Nat -> T)
+            (c2 : T -> T -> T)
+            (c3 : (Nat -> T) -> T)
+            (d : D)
+  : T => D-elim (\lam _ => T) c1 (\lam _ _ => c2) (\lam _ => c3) d
+
 {- To check that the definition of D-elim and D-rec is correct, you can try to implement foo using D-rec.
 \func foo (d : D) : Nat
   | con1 n => n
@@ -81,24 +203,62 @@
   | con3 g => foo (g (foo (g 100)))
 -}
 
+\func foo (d : D) : Nat
+  | con1 n => n
+  | con2 d1 d2 => foo d1 + foo d2
+  | con3 g => foo (g (foo (g 100)))
+
+\func foo' : D -> Nat => D-rec Nat id (+) (\lam g => g $ g 100)
+
+\func foo'-correct {d : D} : foo d = foo' d
+  | {con1 n} => idp
+  | {con2 d1 d2} => pmap2 (+) foo'-correct foo'-correct
+  | {con3 g} =>
+    foo (g (foo (g 100))) ==< foo'-correct >==
+    foo' (g (foo (g 100))) ==< pmap (foo' o g) foo'-correct >==
+    foo' (con3 g) `qed
+
 -- 12. Определите рекурсор и элиминатор для List.
+
+\func List-elim {A : \Type}
+                (T : List A -> \Type)
+                (n : T nil)
+                (c : \Pi (x : A) (xs : List A) -> T xs -> T (x :: xs))
+                (xs : List A)
+  : T xs \elim xs
+  | nil => n
+  | x :: xs => c x xs $ List-elim T n c xs
+
+\func List-rec {A : \Type}
+               (T : \Type)
+               (n : T)
+               (c : A -> T -> T)
+               (xs : List A)
+  : T => List-elim (\lam _ => T) n (\lam x _ => c x) xs
 
 -- 13. Докажите pmap при помощи паттерн матчинга с idp.
 
-\func pmap {A B : \Type} (f : A -> B) {a a' : A} (p : a = a') : f a = f a' => {?}
+\func pmap {A B : \Type} (f : A -> B) {a a' : A} (p : a = a') : f a = f a' \elim p
+  | idp => idp
 
 -- 14. Докажите pmap2 при помощи паттерн матчинга с idp.
 
-\func pmap2 {A B C : \Type} (f : A -> B -> C) {a a' : A} (p : a = a') {b b' : B} (q : b = b') : f a b = f a' b' => {?}
+\func pmap2 {A B C : \Type} (f : A -> B -> C)
+            {a a' : A} (p : a = a')
+            {b b' : B} (q : b = b')
+  : f a b = f a' b' \elim p, q
+  | idp, idp => idp
 
 -- Optional task
--- 15. У оператора J есть другая форма, которую мы будем называть Jalt. Докажите, что J и Jalt эквивалентны, то есть выразите одно через другое и наоборот.
+-- 15. У оператора J есть другая форма, которую мы будем называть Jalt.
+--     Докажите, что J и Jalt эквивалентны, то есть выразите одно через другое и наоборот.
 
 -- Выразите Jalt через J. Можно пользоваться только J, idp и всем, что через них выражается.
 
 \func Jalt {A : \Type} (B : \Pi (a a' : A) -> a = a' -> \Type)
            (b : \Pi (a : A) -> B a a idp)
-           {a a' : A} (p : a = a') : B a a' p => {?}
+           {a a' : A} (p : a = a')
+  : B a a' p => J (B a) (b a) p
 
 -- Выразите J через Jalt. Можно пользоваться только Jalt, idp и всем, что через них выражается.
 -- Hint:
@@ -106,10 +266,21 @@
 -- b. Докажите, что тип \Sigma (x : A) (a = x) одноэлементный, то есть, что для любого p : \Sigma (x : A) (a = x) верно, что (x,idp) = p.
 -- c. Используя эти две конструкции, легко определить J.
 
-\func transport'' {A : \Type} (B : A -> \Type) {a a' : A} (p : a = a') (b : B a) : B a' => {?}
+\func transport'' {A : \Type} (B : A -> \Type)
+                  {a a' : A} (p : a = a')
+                  (b : B a)
+  : B a' => Jalt (\lam x x' _ => B x -> B x') (\lam _ => id) p b
 
-\func sigma-contr {A : \Type} {a : A} (p : \Sigma (x : A) (a = x)) : (a,idp) = {\Sigma (x : A) (a = x)} p => {?}
+\func sigma-contr {A : \Type} {a : A} (p : \Sigma (x : A) (a = x)) : (a, idp) = {\Sigma (x : A) (a = x)} p
+  => Jalt (\lam y y' q => (y, idp) = {\Sigma (z : A) (y = z)} (y', q)) (\lam _ => idp) p.2
 
-\func J' {A : \Type} {a : A} (B : \Pi (a' : A) -> a = a' -> \Type)
-         (b : B a idp)
-         {a' : A} (p : a = a') : B a' p => {?}
+\func J' {A : \Type} {a : A}
+         (B : \Pi (a' : A) -> a = a' -> \Type) (b : B a idp)
+         {a' : A} (p : a = a')
+  : B a' p =>
+  \let
+    | (s, b') => Jalt (\lam x x' _ => \Sigma (s : a = x) (B x s) -> \Sigma (s : a = x') (B x' s))
+                      (\lam _ => id) p (idp, b)
+    | a's=a'p : (a', s) = {\Sigma (x : A) (a = x)} (a', p)
+      => inv (sigma-contr (a', s)) *> sigma-contr (a', p)
+  \in transport'' (\lam (l, r) => B l r) a's=a'p b'
