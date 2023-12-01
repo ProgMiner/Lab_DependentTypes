@@ -1,0 +1,387 @@
+\import Algebra.Meta
+\import Arith.Nat
+\import Data.Bool
+\import Data.List
+\import Data.Maybe
+\import Data.Or
+\import Function
+\import Function.Meta
+\import Logic (Empty, Not, TruncP, absurd)
+\import Logic.Meta
+\import Meta
+\import Order.PartialOrder
+\import Paths
+\import Paths.Meta
+\import Set (decideEq, no, yes)
+\import hw08 (Paren, Balanced, isBalanced)
+
+\open Paren
+\open Balanced
+
+\func isBalanced' (xs : List Paren) : Bool
+  => \case hlp (length xs) xs \with {
+    | (_, nil, _, _) => true
+    | _ => false
+  }
+  \where {
+    \func hlp (fuel : Nat) (xs : List Paren) : \Sigma (ys zs : List Paren) (xs = ys ++ zs) (Balanced ys)
+      | 0, xs => (nil, xs, idp, nil-balanced)
+      | suc f, Left :: xs => \case hlp f xs \with {
+        | (ys, Right :: zs, p, b) => \case hlp f zs \with {
+          | (ys', nil, p', b') => \let p1 : Left :: xs = Left :: (ys ++ Right :: nil) ++ ys'
+          => pmap (Left ::) $ p *> pmap (ys ++ Right :: __) (p' *> ListMonoid.ide-right) *> inv ListMonoid.*-assoc
+                                  \in (Left :: xs, nil, equation, append-balanced (cons-balanced b idp) b' p1)
+          | _ => (Left :: ys ++ Right :: nil, zs, equation, cons-balanced b idp)
+        }
+        | (ys, _, p, b) => (nil, Left :: xs, idp, nil-balanced)
+      }
+      | _, xs => (nil, xs, idp, nil-balanced)
+  }
+
+\func isBalanced'' {xs : List Paren} (p : isBalanced xs = true) : Balanced xs => {?}
+  \where {
+
+    \axiom hlp-prev-suc (acc i : Nat) (xs : List Paren) {ys : List Paren}
+                        (p : xs = Left :: ys) (q : isBalanced.hlp (suc acc) (take i ys) = just acc)
+                        (t : \Pi (j : Nat) (j NatSemiring.< i) -> \Sigma (res : Nat)
+                                                                         (isBalanced.hlp (suc acc) (take j ys) = just res)
+                                                                         (suc acc <= res))
+                        (pi : i <= length ys)
+      : TruncP (\Sigma (j : Nat) (i = suc j) (isBalanced.hlp (suc acc) (take j ys) = just (suc acc)))
+
+    {-
+    \func hlp-prev-suc (acc i : Nat) (xs : List Paren) {ys : List Paren}
+                       (p : xs = Left :: ys) (q : isBalanced.hlp (suc acc) (take i ys) = just acc)
+                       (t : \Pi (j : Nat) (j NatSemiring.< i) -> \Sigma (res : Nat)
+                                                                        (isBalanced.hlp (suc acc) (take j ys) = just res)
+                                                                        (suc acc <= res))
+                       (pi : i <= length ys)
+      : \Sigma (j : Nat) (i = suc j) (isBalanced.hlp (suc acc) (take j ys) = just (suc acc)) \elim i, ys, p
+      | 0, nil, idp => absurd $ sucn/=n $ pmap (unjust 0) q
+      | 0, _ :: _, idp => absurd $ sucn/=n $ pmap (unjust 0) q
+      | suc _, nil, idp => absurd $ sucn/=n $ pmap (unjust 0) q
+      | suc i, y :: ys, idp =>
+        \let | (zs, pzs) => take-less i (suc i) _ linarith
+        \in \case prefix-subst' (suc acc) (take (suc i) (y :: ys)) (take i (y :: ys)) (inv pzs) \with {
+          | inl (_, p1) => contradiction
+          | inr (0, p, p1) => cases (zs arg addPath) \with {
+            | nil, p2 =>
+              \let | ctr : take i (y :: ys) = take (suc i) (y :: ys) =>
+                rewriteI (pzs, inv p2) (inv ListMonoid.ide-right)
+                   | ctr : i = suc i => take-length' i linarith *> pmap length ctr *>
+                                                                   inv (take-length' (suc i) {y :: ys} pi)
+              \in absurd $ sucn/=n $ inv ctr
+            | Left :: nil, p2 => \let | p1 => rewrite p2 p1
+                                      | p3 : acc = 1 => pmap (unjust 0) $ inv q *> p1
+                                      | (res, p4, p5) => t i linarith
+                                      | p4 : res = 0 => pmap (unjust 0) $ inv p4 *> p
+                                      | p5 : 2 <= {NatSemiring} 0 => Poset.<=_= (inv $ pmap suc p3) <=∘ p5 <=∘ Poset.<=_= p4
+                                 \in absurd linarith
+            | Right :: nil, p2 => \let p1 => rewrite p2 p1
+                                  \in contradiction
+            | z :: z' :: zs', p2 => \let | p1 => rewrite p2 p1
+                                         | p3 : length (take i (y :: ys)) Nat.+ length zs = length (take (suc i) (y :: ys)) =>
+                                           inv length_++ *> pmap length pzs
+                                         | p3 : i Nat.+ length zs = suc i => pmap (Nat.`+ length zs) (take-length' i linarith)
+                                           *> p3 *> inv (take-length' (suc i) {y :: ys} pi)
+                                         | p3 : length zs = 1 => linarith
+                                         | p4 : 1 NatSemiring.< length (z :: z' :: zs') => linarith
+                                         | p4 : 1 NatSemiring.< length zs => transport (\lam xs => 1 NatSemiring.< length xs) (inv p2) p4
+                                    \in absurd linarith
+          }
+          | inr (suc res, p, p1) => cases (zs arg addPath) \with {
+            | nil, p2 =>
+              \let | ctr : take i (y :: ys) = take (suc i) (y :: ys) =>
+                rewriteI (pzs, inv p2) (inv ListMonoid.ide-right)
+                   | ctr : i = suc i => take-length' i linarith *> pmap length ctr *>
+                                                                   inv (take-length' (suc i) {y :: ys} pi)
+              \in absurd $ sucn/=n $ inv ctr
+            | Left :: nil, p2 => \let | p1 => rewrite p2 p1
+                                      | p3 : acc = suc (suc res) => pmap (unjust 0) $ inv q *> p1
+                                      | (res', p4, p5) => t i linarith
+                                      | p4 : res' = suc res => pmap (unjust 0) $ inv p4 *> p
+                                      | p5 : suc (suc (suc res)) <= {NatSemiring} suc res => Poset.<=_= (inv $ pmap suc p3) <=∘ p5 <=∘ Poset.<=_= p4
+                                 \in absurd linarith
+            | Right :: nil, p2 => \let | p1 => rewrite p2 p1
+                                       | p1 => p1 *> hlp-nil
+                                       | p1 : acc = res => pmap (unjust 0) $ inv q *> p1
+                                  \in (i, idp, p *> inv (pmap (just o suc) p1))
+            | z :: z' :: zs', p2 => \let | p1 => rewrite p2 p1
+                                         | p3 : length (take i (y :: ys)) Nat.+ length zs = length (take (suc i) (y :: ys)) =>
+                                           inv length_++ *> pmap length pzs
+                                         | p3 : i Nat.+ length zs = suc i => pmap (Nat.`+ length zs) (take-length' i linarith)
+                                           *> p3 *> inv (take-length' (suc i) {y :: ys} pi)
+                                         | p3 : length zs = 1 => linarith
+                                         | p4 : 1 NatSemiring.< length (z :: z' :: zs') => linarith
+                                         | p4 : 1 NatSemiring.< length zs => transport (\lam xs => 1 NatSemiring.< length xs) (inv p2) p4
+                                    \in absurd linarith
+          }
+        }
+    -}
+
+    \axiom first-acc (fuel acc i : Nat) (xs : List Paren) {ys : List Paren}
+                     (p : \Pi (i : Nat) -> \Sigma (res : Nat)
+                                                  (isBalanced.hlp acc (take i xs) = just res)
+                                                  (acc <= res))
+                     (q : isBalanced.hlp (suc acc) ys = just acc)
+                     (s : xs = Left :: ys)
+                     (s' : length ys = fuel Nat.+ i)
+                     (t : \Pi (j : Nat) (j NatSemiring.< i) -> \Sigma (res : Nat)
+                                                                      (isBalanced.hlp (suc acc) (take j ys) = just res)
+                                                                      (suc acc <= res))
+      : TruncP (\Sigma (i : Nat) (isBalanced.hlp (suc acc) (take i ys) = just acc)
+                       (\Pi (j : Nat) (j NatSemiring.< i) -> \Sigma (res : Nat)
+                                                                    (isBalanced.hlp (suc acc) (take j ys) = just res)
+                                                                    (suc acc <= res))
+                       (i <= length ys))
+
+    {-
+    \func first-acc (fuel acc i : Nat) (xs : List Paren) {ys : List Paren}
+                    (p : \Pi (i : Nat) -> \Sigma (res : Nat)
+                                                 (isBalanced.hlp acc (take i xs) = just res)
+                                                 (acc <= res))
+                    (q : isBalanced.hlp (suc acc) ys = just acc)
+                    (s : xs = Left :: ys)
+                    (s' : length ys = fuel Nat.+ i)
+                    (t : \Pi (j : Nat) (j NatSemiring.< i) -> \Sigma (res : Nat)
+                                                                     (isBalanced.hlp (suc acc) (take j ys) = just res)
+                                                                     (suc acc <= res))
+      : \Sigma (i : Nat) (isBalanced.hlp (suc acc) (take i ys) = just acc)
+               (\Pi (j : Nat) (j NatSemiring.< i) -> \Sigma (res : Nat)
+                                                            (isBalanced.hlp (suc acc) (take j ys) = just res)
+                                                            (suc acc <= res))
+               (i <= length ys)
+      \elim fuel, s, s'
+        | 0, idp, idp => (i, rewrite (take-n {Paren} {ys}) q, \lam j pj => \case suc j `decideEq` i \with {
+          | yes e => cases (take j ys arg addPath, drop j ys, splitAt.appendLem j ys) \with {
+            | zs, pzs, zs', p1 => cases (isBalanced.hlp (suc acc) zs arg addPath) \with {
+              | just n, p2 => cases (zs', p1) \with {
+                | nil, p1 => \let pzs' => transport (\lam l => l = ys) ListMonoid.ide-right p1
+                             \in \case sucn/=n (inv $ take-length j pj *> pmap length (pzs *> pzs') *> inv e) \with {}
+                | Left :: nil, p1 => \case prefix-subst (inv p1) _ p2 \with {
+                  | inl (p3, _) => contradiction
+                  | inr (res', p3, p4) => cases (isBalanced.hlp res' (Left :: nil) arg addPath) \with {
+                    | nothing, p5 => contradiction
+                    | just res, p5 => \let | (res'', p6, p7) => p $ suc j
+                                           | z : res'' = res' => pmap (unjust 0)
+                                              $ inv p6 *> hlp-Left-step *> pmap _ pzs *> p2 *> inv p3
+                                           | z' : res = suc res' => pmap (unjust 0)
+                                              $ inv p5 *> hlp-Left-step {res'} {nil}
+                                           | z'' : res = acc => pmap (unjust 0) $ inv p5 *> inv p4 *> q
+                                           | z''' : suc acc <= acc => <=-suc p7 <=∘ Preorder.=_<= (pmap suc z *> inv z' *> z'')
+                                      \in absurd linarith
+                  }
+                }
+                | Right :: nil, p1 => (suc acc, inv p2 *> hlp-rev-Right-step (inv p1) q, linarith)
+                | _ :: _ :: zs', p1 => \let | z => pmap pred (NatSemiring.+-comm *> inv length_++ *> pmap length p1 *> inv e)
+                                            | z' => rewriteI (pmap length pzs, take-length j pj, NatSemiring.+-comm) z
+                                       \in absurd linarith
+              }
+              | nothing, p2 => \case prefix-subst (inv p1) nothing p2 \with {
+                | inl (res, p3) => contradiction
+                | inr (_, p3, _) => contradiction
+              }
+            }
+          }
+          | no n => t j linarith
+        }, linarith)
+        | suc fuel, idp, s' => cases (isBalanced.hlp (suc acc) (take i ys) arg addPath) \with {
+          | just a, p1' => cases (decideEq a acc) \with {
+            | yes e => (i, p1' *> pmap just e, t, linarith)
+            | no n => first-acc fuel acc (suc i) xs p q idp linarith (\lam j pj => \case j `decideEq` i \with {
+              | yes e => cases (take j ys arg addPath, drop j ys, splitAt.appendLem j ys) \with {
+                | zs, pzs, zs', p1 => cases (isBalanced.hlp (suc acc) zs arg addPath) \with {
+                  | just a', p2 => cases (zs', p1) \with {
+                    | nil, p1 => \let | pzs' : zs = ys => inv $ inv p1 *> ListMonoid.ide-right
+                                      | pi : i NatSemiring.< length ys => linarith
+                                      | pi' : i NatSemiring.< j => transport (\lam x => i NatSemiring.< x)
+                                          (inv $ take-length j linarith *> pmap length (pzs *> pzs')) pi
+                                 \in absurd linarith
+                    | Left :: zs', p1 =>
+                      \let | p' : a = a' => pmap (unjust 0) $ inv p1' *> rewrite (inv e, pzs) p2
+                           | (res', p3, p4) => p (suc i)
+                           | p3 : a' = res' => pmap (unjust 0) $ inv p2 *> rewriteI (pzs, inv e) (inv hlp-Left-step) *> p3
+                           | p4 : acc <= a' => rewrite p3 p4
+                           | p' : Not (a' = acc) => contradiction
+                      \in (a', idp, <=suc' p4 contradiction)
+                    | Right :: zs', p1 => cases (a' arg addPath) \with {
+                      | 0, p3 => \case prefix-subst (inv p1) (just 0) (p2 *> pmap just p3) \with {
+                        | inl ((), _)
+                        | inr (res', p4, p5) => \case prefix-subst {_} {zs ++ Right :: nil} idp _ p2 \with {
+                            | inl ((), _)
+                            | inr (res'', p6, p7) =>
+                              \let | p' : ys = (zs ++ Right :: nil) ++ zs' => inv $ ++-assoc *> p1
+                                   | p'' : isBalanced.hlp (suc acc) (zs ++ Right :: nil) = nothing =>
+                                     p7 *> rewrite (pmap (unjust 0) p6, p3) idp
+                              \in \case prefix-subst p' _ p'' \with {
+                                | inl (p8, p9) => contradiction
+                                | inr (_, (), _)
+                              }
+                          }
+                      }
+                      | suc a', p3 => \case prefix-subst {_} {zs ++ Right :: nil} idp _ p2 \with {
+                            | inl ((), _)
+                            | inr (res'', p6, p7) =>
+                              \let | p' : ys = (zs ++ Right :: nil) ++ zs' => inv $ ++-assoc *> p1
+                                   | p'' : isBalanced.hlp (suc acc) (zs ++ Right :: nil) = just a' =>
+                                     p7 *> rewrite (pmap (unjust 0) p6, p3) hlp-nil
+                              \in \case prefix-subst p' _ p'' \with {
+                                | inl ((), _)
+                                | inr (res''', p8, p9) =>
+                                  \let | (res'''', p10, p11) => p (suc (suc i))
+                                       | p''' : isBalanced.hlp (suc acc) (take (suc i) ys) = just res'''' =>
+                                         rewriteI hlp-Left-step p10
+                                       | q''' : take (suc i) ys = zs ++ Right :: nil =>
+                                         take-next i (inv p1) (rewriteI e pzs)
+                                       | p''' : isBalanced.hlp (suc acc) (zs ++ Right :: nil) = just res'''' =>
+                                         rewriteI (pzs, inv pzs, q''') p'''
+                                       | p''' : a' = res'''' => pmap (unjust 0) $ inv p'' *> p'''
+                                       | p''' : acc <= a' => rewrite p''' p11
+                                  \in (suc a', idp, linarith)
+                              }
+                          }
+                    }
+                  }
+                  | nothing, p2 => \case prefix-subst (inv p1) nothing p2 \with {
+                    | inl (res, p3) => contradiction
+                    | inr (_, p3, _) => contradiction
+                  }
+                }
+              }
+              | no n => t j (j<i pj n)
+            })
+          }
+          | nothing, p1 => \case prefix-subst (inv $ splitAt.appendLem i ys) nothing p1 \with {
+            | inl (_, p2) => contradiction
+            | inr (_, (), _)
+          }
+        }
+    -}
+
+    \func kill {acc : Nat} {xs : List Paren} {i : Nat} (p : isBalanced.hlp acc (take i xs) = nothing)
+      : isBalanced.hlp acc xs = nothing
+      => \case prefix-subst (inv $ splitAt.appendLem i xs) nothing p \with {
+        | inl (_, p2) => p2
+        | inr (_, p1, _) => contradiction
+      }
+
+    \func prefix-subst' (acc : Nat) (xs ys : List Paren) {zs : List Paren} (p : xs = ys ++ zs)
+      : Or (\Sigma (isBalanced.hlp acc ys = nothing) (isBalanced.hlp acc xs = nothing))
+        (\Sigma (res : Nat) (isBalanced.hlp acc ys = just res) (isBalanced.hlp acc xs = isBalanced.hlp res zs))
+      => \let res => isBalanced.hlp acc ys
+         \in \case prefix-subst p res idp \with {
+          | inl (p, p1) => inl (p, p1)
+          | inr (res', p, p1) => inr (res', inv p, p1)
+        }
+
+    \func prefix-subst {acc : Nat} {xs ys zs : List Paren} (p : xs = ys ++ zs)
+                       (res : Maybe Nat) (q : isBalanced.hlp acc ys = res)
+      : Or
+        (\Sigma (res = nothing) (isBalanced.hlp acc xs = nothing))
+        (\Sigma (res' : Nat) (just res' = res) (isBalanced.hlp acc xs = isBalanced.hlp res' zs))
+      \elim acc, ys, p, q
+        | 0, nil, idp, idp => inr (0, idp, idp)
+        | suc acc, nil, idp, idp => inr (suc acc, idp, idp)
+        | 0, Left :: ys, idp, idp => prefix-subst {_} {_} {_} {zs} idp res idp
+        | 0, Right :: ys, idp, idp => inl (idp, idp)
+        | suc acc, Left :: ys, idp, idp => prefix-subst {_} {_} {_} {zs} idp res idp
+        | suc acc, Right :: ys, idp, idp => prefix-subst {_} {_} {_} {zs} idp res idp
+
+    \lemma hlp-Left-step {acc : Nat} {xs : List Paren}
+      : isBalanced.hlp acc (Left :: xs) = isBalanced.hlp (suc acc) xs \elim acc, xs
+      | 0, nil => idp
+      | 0, x :: xs => idp
+      | suc acc, nil => idp
+      | suc acc, x :: xs => idp
+
+    \lemma hlp-Right-step {acc : Nat} {xs : List Paren}
+      : isBalanced.hlp (suc acc) (Right :: xs) = isBalanced.hlp acc xs
+      => idp
+
+    \lemma hlp-Right-step' {xs : List Paren} : isBalanced.hlp 0 (Right :: xs) = nothing => idp
+
+    \lemma hlp-nil {acc : Nat} : isBalanced.hlp acc nil = just acc \elim acc
+      | 0 => idp
+      | suc acc => idp
+
+    \lemma hlp-rev-Right-step {acc res : Nat} {xs ys : List Paren}
+                              (p : xs = ys ++ Right :: nil)
+                              (q : isBalanced.hlp acc xs = just res)
+      : isBalanced.hlp acc ys = just (suc res) \elim xs, p
+      | xs, idp => cases (isBalanced.hlp acc ys arg addPath) \with {
+        | nothing, p1 => \case prefix-subst {_} {_} {ys} {Right :: nil} idp nothing p1 \with {
+          | inl (_, p2) => contradiction
+          | inr (_, (), _)
+        }
+        | just res', p1 => \case prefix-subst {_} {_} {ys} {Right :: nil} idp (just res') p1 \with {
+          | inl ((), _)
+          | inr (0, p2, p3) => contradiction
+          | inr (suc res'', p2, p3) => \let z => pmap (unjust 0) $ inv q *> p3 *> hlp-nil
+                                       \in inv p2 *> rewrite z idp
+        }
+      }
+  }
+
+\func sucn/=n {n : Nat} (p : suc n = n) : Empty \elim n, p
+  | suc n, p => sucn/=n $ pmap pred p
+
+\func not_id<id {n : Nat} (p : n NatSemiring.< n) : Empty \elim n, p
+  | suc n, NatSemiring.suc<suc p => not_id<id p
+
+\lemma <suc {n m : Nat} (p : n NatSemiring.< suc m) (q : Not (n = m)) : n NatSemiring.< m \elim n, m, p
+  | 0, 0, NatSemiring.zero<suc => absurd $ q idp
+  | 0, suc m, NatSemiring.zero<suc => NatSemiring.zero<suc
+  | suc n, 0, NatSemiring.suc<suc p => contradiction
+  | suc n, suc m, NatSemiring.suc<suc p => NatSemiring.suc<suc $ <suc p (\lam p1 => q $ pmap suc p1)
+
+\lemma <=suc {n m : Nat} (p : n <= m) (q : Not (n = m)) : n NatSemiring.< m \elim n, m
+  | 0, 0 => \case q idp \with {}
+  | 0, suc m => linarith
+  | suc n, 0 => linarith
+  | suc n, suc m => NatSemiring.suc<suc $ <=suc linarith (\lam p1 => q $ pmap suc p1)
+
+\lemma <=suc' {n m : Nat} (p : n <= m) (q : Not (n = m)) : suc n <= m
+  => <=suc'-lemma $ <=suc p q
+  \where {
+    \func <=suc'-lemma {n m : Nat} (p : n NatSemiring.< m) : suc n NatSemiring.<= m \elim n, m, p
+      | 0, suc m, NatSemiring.zero<suc => \lam p' => linarith
+      | suc n, suc m, NatSemiring.suc<suc q => \lam p' => <=suc'-lemma q linarith
+  }
+
+\func take-n {A : \Type} {xs : List A} : take (length xs) xs = xs \elim xs
+  | nil => idp
+  | x :: xs => pmap (x ::) take-n
+
+\func take-length {A : \Type} (n : Nat) {xs : List A} (p : n NatSemiring.< length xs)
+  : n = length (take n xs) \elim n, xs, p
+  | 0, x :: xs, NatSemiring.zero<suc => idp
+  | suc n, x :: xs, NatSemiring.suc<suc p => pmap suc $ take-length n p
+
+\func take-length' {A : \Type} (n : Nat) {xs : List A} (p : n <= length xs)
+  : n = length (take n xs) \elim n, xs
+  | 0, nil => idp
+  | 0, x :: xs => idp
+  | suc n, nil => absurd linarith
+  | suc n, a :: xs => pmap suc $ take-length' n linarith
+
+\func take-next {A : \Type} (n : Nat) {xs ys zs : List A} {x : A} (p : xs = ys ++ x :: zs) (q : take n xs = ys)
+  : take (suc n) xs = ys ++ x :: nil \elim n, ys, p
+  | 0, nil, idp => idp
+  | 0, y :: ys, idp => \case q \with {}
+  | suc n, nil, idp => \case q \with {}
+  | suc n, y :: ys, idp => pmap (y ::) $ take-next n idp (pmap tail q)
+
+\func take-less {A : \Type} (n m : Nat) (xs : List A) (p : n NatSemiring.< m)
+  : \Sigma (ys : List A) (take n xs ++ ys = take m xs) \elim n, m, xs, p
+  | 0, suc m, xs, NatSemiring.zero<suc => (take (suc m) xs, idp)
+  | suc n, suc m, nil, NatSemiring.suc<suc p => (nil, idp)
+  | suc n, suc m, x :: xs, NatSemiring.suc<suc p => \let (ys, q) => take-less n m xs p
+                                                    \in (ys, pmap (x ::) q)
+
+\lemma j<i {i j : Nat} (p : j NatSemiring.< suc i) (q : Not (j = i)) : j NatSemiring.< i \elim i, j, p
+  | 0, 0, NatSemiring.zero<suc => \case q idp \with {}
+  | suc i, 0, NatSemiring.zero<suc => NatSemiring.zero<suc
+  | 0, suc j, NatSemiring.suc<suc ()
+  | suc i, suc j, NatSemiring.suc<suc p => NatSemiring.suc<suc $ j<i p (\lam p1 => q $ pmap suc p1)
+
+\lemma <=-suc {n m : Nat} (p : n <= m) : suc n <= suc m => linarith

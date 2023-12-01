@@ -1,24 +1,128 @@
+\import Algebra.Meta
+\import Arith.Nat
 \import Data.Bool
-\import Data.List \hiding (headDef)
+\import Data.List
+\import Data.Maybe
+\import Data.Or
+\import Data.SeqColimit
+\import Function
+\import Function.Meta
+\import Logic (Empty, Not, TruncP, absurd, inP, truncP)
+\import Logic.Meta
+\import Meta
+\import Order.PartialOrder
+\import Paths
+\import Paths.Meta
+\import Set (decideEq, no, yes)
+\import hw01 (fac)
 \import hw06
+\import hw08_
 \import lect08
 \import Order.LinearOrder
-\open LinearOrder
+\open LinearOrder \hiding (<=)
 
 -- 1. Реализуйте функцию filter и докажите ее корректность, то есть, что выполнены следующие условия:
 --    * filter p xs является подсписком xs
 --    * Все элементы filter p xs удовлетворяют предикату p
 --    * Любой подсписок xs с тем же свойством является подсписком filter p xs
 
+\data All (xs : List Bool) \elim xs
+  | nil => anil
+  | true :: xs => acons (All xs)
+
+\func filter {A : \Type} (p : A -> Bool) (xs : List A) : List A \elim xs
+  | nil => nil
+  | a :: xs => \case p a \with {
+    | true => a :: filter p xs
+    | false => filter p xs
+  }
+
+\func filter-sublist {A : \Type} {p : A -> Bool} {xs : List A} : Sublist (filter p xs) xs \elim xs
+  | nil => snil
+  | a :: xs => mcases \with {
+    | true => sconst idp filter-sublist
+    | false => sconsf filter-sublist
+  }
+
+\func filter-pred {A : \Type} {p : A -> Bool} {xs : List A} : All (map p $ filter p xs) \elim xs
+  | nil => anil
+  | a :: xs => mcases {_} {arg addPath} \with {
+    | true, q => rewrite q $ acons filter-pred
+    | false, _ => filter-pred
+  }
+
+\func filter-pred-sublist {A : \Type} {p : A -> Bool} {xs ys : List A} (s : Sublist xs ys) (q : All (map p xs))
+  : Sublist xs (filter p ys) \elim xs, ys, s, q
+  | nil, nil, snil, anil => snil
+  | x :: xs, y :: ys, sconst p1 s, q => cases (p y, rewrite p1 q) \with {
+    | true, acons q => sconst p1 $ filter-pred-sublist s q
+  }
+  | xs, y :: ys, sconsf s, q => cases (p y) \with {
+    | true => sconsf $ filter-pred-sublist s q
+    | false => filter-pred-sublist s q
+  }
+
 -- 2. Докажите, что Perm l1 l2 тогда и только тогда, когда Insertion.sort l1 = Insertion.sort l2.
+
+\func perm-inv {A : \Type} {xs ys : List A} (p : Perm xs ys) : Perm ys xs \elim xs, ys, p
+  | nil, nil, perm-nil => perm-nil
+  | xs, ys, perm-trans p1 p2 => perm-trans (perm-inv p2) (perm-inv p1)
+  | x :: xs, y :: ys, perm-cons p p1 => perm-cons (inv p) $ perm-inv p1
+  | x :: x' :: xs, y :: y' :: ys, perm-swap p p1 p2 => perm-swap (inv p1) (inv p) (inv p2)
+
+\func perm-sort {A : Dec} (xs ys : List A) : Perm xs ys <-> (Insertion.sort xs = Insertion.sort ys)
+  => (perm-sort-=>, perm-sort-<=)
+  \where {
+
+    \func perm-sort-=> {A : \Set} {xs ys : List A} {d : Dec A} (p : Perm xs ys)
+      : Insertion.sort xs = Insertion.sort ys \elim xs, ys, p
+      | nil, nil, perm-nil => idp
+      | xs, ys, perm-trans p1 p2 => perm-sort-=> p1 *> perm-sort-=> p2
+      | x :: xs, y :: ys, perm-cons p p1 => rewrite p $ pmap (Insertion.sort.insert y) $ perm-sort-=> p1
+      | x :: x' :: xs, y :: y' :: ys, perm-swap p p1 p2
+      => rewrite (Insertion.sort-perm.insert-comm _ _ _, p, p1)
+        $ pmap (Insertion.sort.insert y o Insertion.sort.insert y') $ pmap _ p2
+
+    \func perm-sort-<= {A : \Set} {d : Dec A} {xs ys : List A} (p : Insertion.sort xs = Insertion.sort ys) : Perm xs ys
+      => perm-trans (Insertion.sort-perm xs) $ perm-trans (rewrite p perm-refl) $ perm-inv (Insertion.sort-perm ys)
+  }
 
 -- 3. Докажите, что спецификация "результат является перестановкой входа и отсортирован" является полной для функции sort.
 
-\func completeness {A : Dec} (sort : List A -> List A) (l : List A) (p : Perm l (sort l)) (s : Sorted (sort l)) : sort l = Insertion.sort l
-  => {?}
+\func sort-idemp {A : Dec} {xs : List A} (s : Sorted xs) : xs = Insertion.sort xs \elim xs, s
+  | nil, sorted-nil => idp
+  | _ :: nil, sorted-cons _ _ => idp
+  | x :: x' :: xs, sorted-cons px s => cases (Insertion.sort.insert x' (Insertion.sort xs) arg addPath) \with {
+    | nil, p => rewrite (inv p) $ pmap (x ::) $ sort-idemp s
+    | y :: ys, p => \let | q => sort-idemp s *> p
+                         | qh => pmap (headDef x) q
+                         | qt => pmap tail q
+                    \in rewrite (inv qh, dec<=_reduce px) $ pmap (x :: x' :: __) qt
+  }
+
+\func completeness {A : Dec} {xs : List A}
+                   (sort : List A -> List A) (p : Perm xs (sort xs)) (s : Sorted (sort xs))
+  : sort xs = Insertion.sort xs
+  => sort xs ==< sort-idemp s >==
+    Insertion.sort (sort xs) ==< inv ((perm-sort xs (sort xs)).1 p) >==
+    Insertion.sort xs `qed
 
 -- 4. Определите факториал через хвостовую рекурсию.
 --    Докажите, что он равен обычному определению факториала.
+
+\func fact (n : Nat) => hlp n 1
+  \where {
+    \func hlp (n : Nat) (acc : Nat) : Nat \elim n
+      | 0 => acc
+      | suc n => hlp n (acc Nat.* suc n)
+  }
+
+\func fact-eq {n : Nat} : fact n = fac n => aux
+  \where {
+    \func aux {n : Nat} {acc : Nat} : fact.hlp n acc = fac n Nat.* acc \elim n
+      | 0 => rewriteI NatSemiring.*-comm idp
+      | suc n => aux *> equation
+  }
 
 -- 5. Определите функцию, которая проверяет правильность скобочной последовательности.
 --    Докажите ее корректность.
@@ -26,12 +130,152 @@
 \data Paren | Left | Right
 
 \func isBalanced (xs : List Paren) : Bool
-  => {?}
+  => \case hlp 0 xs \with {
+    | just 0 => true
+    | _ => false
+  }
+  \where {
+    \func hlp (acc : Nat) (xs : List Paren) : Maybe Nat \elim acc, xs
+      | acc, nil => just acc
+      | acc, Left :: xs => hlp (suc acc) xs
+      | 0, Right :: xs => nothing
+      | acc, Right :: xs => hlp (pred acc) xs
+
+    \func test1 : isBalanced nil = true => idp
+    \func test2 : isBalanced (Left :: Right :: nil) = true => idp
+    \func test3 : isBalanced (Left :: Right :: Left :: Right :: nil) = true => idp
+    \func test4 : isBalanced (Left :: Left :: Right :: Right :: nil) = true => idp
+    \func test5 : isBalanced (Left :: Left :: Left :: Right :: Right :: Right :: nil) = true => idp
+    \func test6 : isBalanced (Left :: Left :: Right :: Right :: Left :: Right :: nil) = true => idp
+    \func test7 : isBalanced (Left :: Right :: Left :: Left :: Right :: Right :: nil) = true => idp
+    \func test8 : isBalanced (Left :: Right :: Right :: Left :: Right :: Right :: nil) = false => idp
+    \func test9 : isBalanced (Right :: Left :: nil) = false => idp
+    \func test10 : isBalanced (Left :: Right :: Left :: nil) = false => idp
+  }
 
 \data Balanced (xs : List Paren) \with
   | nil => nil-balanced
   | :: Left xs => cons-balanced {ys : List Paren} (Balanced ys) (xs = ys ++ Right :: nil)
   | xs => append-balanced {ys zs : List Paren} (Balanced ys) (Balanced zs) (xs = ys ++ zs)
 
-\func isBalanced-correct (xs : List Paren) : (isBalanced xs = true) <-> Balanced xs
-  => {?}
+\func isBalanced' (xs : List Paren) : Bool
+  => \case hlp (length xs) xs \with {
+    | (_, nil, _, _) => true
+    | _ => false
+  }
+  \where {
+    \func hlp (fuel : Nat) (xs : List Paren) : \Sigma (ys zs : List Paren) (xs = ys ++ zs) (Balanced ys)
+      | 0, xs => (nil, xs, idp, nil-balanced)
+      | suc f, Left :: xs => \case hlp f xs \with {
+        | (ys, Right :: zs, p, b) => \case hlp f zs \with {
+          | (ys', nil, p', b') => \let p1 : Left :: xs = Left :: (ys ++ Right :: nil) ++ ys'
+          => pmap (Left ::) $ p *> pmap (ys ++ Right :: __) (p' *> ListMonoid.ide-right) *> inv ListMonoid.*-assoc
+                                  \in (Left :: xs, nil, equation, append-balanced (cons-balanced b idp) b' p1)
+          | _ => (Left :: ys ++ Right :: nil, zs, equation, cons-balanced b idp)
+        }
+        | (ys, _, p, b) => (nil, Left :: xs, idp, nil-balanced)
+      }
+      | _, xs => (nil, xs, idp, nil-balanced)
+  }
+
+\func isBalanced'' {xs : List Paren} (p : isBalanced xs = true) : TruncP (Balanced xs)
+  => hlp (length xs) 0 (\lam i => cases (isBalanced.hlp 0 (take i xs) arg addPath) \with {
+    | just res, p1 => (res, idp, zero<=_)
+    | nothing, p1 => \case rewrite (kill p1) (unfold isBalanced p) \with {}
+  }) (cases (isBalanced.hlp 0 xs arg addPath) \with {
+    | just 0, p1 => idp
+    | nothing, p1 => \case rewrite p1 (unfold isBalanced p) \with {}
+    | just (suc n), p1 => \case rewrite p1 (unfold isBalanced p) \with {}
+  }) <=-refl
+  \where {
+    \open hw08_.isBalanced''
+
+    \func hlp (fuel acc : Nat) {xs : List Paren}
+              (p : \Pi (i : Nat) -> \Sigma (res : Nat)
+                                          (isBalanced.hlp acc (take i xs) = just res)
+                                          (acc <= res))
+              (q : isBalanced.hlp acc xs = just acc)
+              (s : length xs <= fuel)
+      : TruncP (Balanced xs) \elim fuel, xs
+      | _, nil => inP nil-balanced
+      | 0, _ :: xs => absurd linarith
+      | suc fuel, Left :: xs => \case hlp-cons (suc fuel) acc p q idp s \with {
+        | inP (zs, nil, p1, b) => inP $ transport (\lam xs' => Balanced xs') (inv $ p1 *> ListMonoid.ide-right) b
+        | inP (zs, z' :: zs', p1, b) => {?}
+      }
+      | suc fuel, Right :: xs => cases (acc arg addPath, isBalanced.hlp acc (Right :: nil) arg addPath, p 1) \with {
+        | _, _, nothing, _, (_, p3, _) => contradiction
+        | 0, p1, just _, p2, _ => \case rewrite p1 p2 \with {}
+        | 1, p1, just x, p2, (res, p3, p4) => \let z : 0 = res => pmap (unjust 0) $
+          just 0 ==< transport (just 0 = isBalanced.hlp __ (Right :: nil)) (inv p1) idp >==
+          isBalanced.hlp acc (Right :: nil) ==< p2 >==
+          just x ==< p3 >==
+          just res `qed
+                                              \in absurd linarith
+        | suc (suc x'), p1, just x, p2, (res, p3, p4) => \let z : suc x' = res => pmap (unjust 0) $
+          just (suc x') ==< transport (just (suc x') = isBalanced.hlp __ (Right :: nil)) (inv p1) idp >==
+          isBalanced.hlp acc (Right :: nil) ==< p2 >==
+          just x ==< p3 >==
+          just res `qed
+                                              \in absurd linarith
+      }
+
+    \func hlp-cons (fuel acc : Nat) {xs ys : List Paren}
+                   (p : \Pi (i : Nat) -> \Sigma (res : Nat)
+                                                (isBalanced.hlp acc (take i xs) = just res)
+                                                (acc <= res))
+                   (q : isBalanced.hlp acc xs = just acc)
+                   (s : xs = Left :: ys)
+                   (s' : length xs <= fuel)
+      : TruncP (\Sigma (zs zs' : List Paren) (xs = zs ++ zs') (Balanced zs)) \elim fuel, s
+      | 0, idp => absurd linarith
+      | suc fuel, idp =>
+        \case first-acc (length ys) acc 0 xs p (inv hlp-Left-step *> q) idp idp (\lam j pj => contradiction) \with {
+          | inP (i, q', p', pi) =>
+            \let | (zs, zs') => splitAt (suc i) xs
+                 | p1 => last-Right acc i xs idp q' p' pi
+            \in \case hlp fuel (suc acc) {?} {?} {?} \with {
+              | inP a => inP (zs, zs', inv $ splitAt.appendLem (suc i) xs, cons-balanced a p1)
+            }
+        }
+        -- \let | (i, q', p', pi) => first-acc (length ys) acc 0 xs p (inv hlp-Left-step *> q) idp idp (\lam j pj => contradiction)
+        --      | (zs, zs') => splitAt (suc i) xs
+        -- \in (zs, zs', inv $ splitAt.appendLem (suc i) xs, {?})
+
+    \func last-Right (acc i : Nat) (xs : List Paren) {ys : List Paren}
+                     (p : xs = Left :: ys) (q : isBalanced.hlp (suc acc) (take i ys) = just acc)
+                     (t : \Pi (j : Nat) (j NatSemiring.< i) -> \Sigma (res : Nat)
+                                                                      (isBalanced.hlp (suc acc) (take j ys) = just res)
+                                                                      (suc acc <= res))
+                     (pi : i <= length ys)
+      : take i ys = take (pred i) ys ++ Right :: nil \elim i, ys, p
+      | 0, nil, idp => absurd $ sucn/=n $ pmap (unjust 0) q
+      | 0, y :: ys, idp => absurd $ sucn/=n $ pmap (unjust 0) q
+      | suc i, nil, idp => absurd $ sucn/=n $ pmap (unjust 0) q
+      | suc i, y :: ys, idp =>
+        \case hlp-prev-suc acc (suc i) xs idp q t pi \with {
+          | inP (j, pj, q') =>
+             \let | pj => pmap pred pj
+                  | q' => rewriteI pj q'
+             \in \case take-less i (suc i) (y :: ys) linarith \with {
+               | (nil, p1) => \let | ctr1 => take-length' i {y :: ys} linarith
+                                   | ctr2 => take-length' (suc i) {y :: ys} pi
+                                   | p1 => inv ListMonoid.ide-right *> p1
+                                   | p1 => ctr1 *> pmap length p1 *> inv ctr2
+                              \in absurd $ sucn/=n $ inv p1
+               | (Left :: nil, p1) => \case prefix-subst (inv p1) (just (suc acc)) q' \with {
+                   | inl ((), _)
+                   | inr (res', p2, p3) => \let | p2 : res' = suc acc => pmap (unjust 0) p2
+                                                | p3 => rewrite p2 p3
+                                                | zzz : acc = suc (suc acc) => pmap (unjust 0) $ inv q *> p3
+                                           \in absurd linarith
+                 }
+               | (Right :: nil, p1) => inv p1
+               | (z :: z' :: zs, p1) => \let | ctr1 => take-length' i {y :: ys} linarith
+                                             | ctr2 => take-length' (suc i) {y :: ys} pi
+                                             | p1 => inv length_++ *> pmap length p1
+                                             | p1 => p1 *> inv ctr2
+                                        \in absurd $ sucn/=n linarith
+             }
+        }
+  }
