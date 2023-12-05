@@ -13,7 +13,6 @@
       <ArendPrintingOptions>
         <option name="showCoerceDefinitions" value="true" />
         <option name="showConstructorParameters" value="true" />
-        <option name="showImplicitArgs" value="true" />
         <option name="showTypesInLambda" value="true" />
       </ArendPrintingOptions>
     </option>

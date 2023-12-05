@@ -7,10 +7,11 @@
 \import Paths.Meta
 \import lect06
 \import lect07 (Functor, fmap)
+\import hw09 (neutralRed, appAccLeft, typeableInterp)
 
 \class Monad \extends Functor
   | return {A : \Set} : A -> F A
-  | \infixl 2 >>= {A B : \Set} : F A -> (A -> F B) -> F B
+  | \infixr 2 >>= {A B : \Set} : F A -> (A -> F B) -> F B
   | return-left {A B : \Set} (a : A) (k : A -> F B) : return a >>= k = k a
   | return-right {A : \Set} (m : F A) : m >>= return = m
   | >>=-assoc {A B C : \Set} (m : F A) (k : A -> F B) (l : B -> F C) : (m >>= k) >>= l = m >>= (\lam x => k x >>= l)
@@ -29,7 +30,7 @@
     | nothing => idp
     | just a => idp
   }
-  | >>=-assoc {A B C : \Set} (m : Maybe A) (k : A -> Maybe B) (l : B -> Maybe C) : m >>= k >>= l = m >>= (\lam x => k x >>= l) \elim m {
+  | >>=-assoc {A B C : \Set} (m : Maybe A) (k : A -> Maybe B) (l : B -> Maybe C) : (m >>= k) >>= l = m >>= (\lam x => k x >>= l) \elim m {
     | nothing => idp
     | just a => idp
   }
@@ -88,7 +89,7 @@
     }) *> return-right t
     | unit => idp
   }
-  | >>=-assoc {A B C : \Set} (t : Term A) (k : A -> Term B) (l : B -> Term C) : t >>= k >>= l = t >>= \lam a => k a >>= l \elim t {
+  | >>=-assoc {A B C : \Set} (t : Term A) (k : A -> Term B) (l : B -> Term C) : (t >>= k) >>= l = t >>= \lam a => k a >>= l \elim t {
     | var v => idp
     | app t1 t2 => pmap2 app (>>=-assoc t1 k l) (>>=-assoc t2 k l)
     | lam t => pmap lam $ >>=-assoc _ _ _ *> pmap (t >>=) (ext \lam a => unfold liftM \case \elim a \with {
@@ -179,8 +180,8 @@
   | app t1 t2 => app-neutral (Neutral t1) (Acc Red1 t2)
 
 -- Нейтральные термы замкнуты относительно редукций.
-\func neutralRed {V : \Set} {t s : Term V} (r : Red1 t s) (n : Neutral t) : Neutral s
-  => {?}
+-- \func neutralRed {V : \Set} {t s : Term V} (r : Red1 t s) (n : Neutral t) : Neutral s
+--   => {?}
 
 -- Нейтральные термы действительно достижимы.
 \func neutralAcc {V : \Set} {t : Term V} (n : Neutral t) : Acc Red1 t \elim t, n
@@ -227,8 +228,8 @@
   | Unit => neutralAcc n
   | Arr T1 T2 => \lam i => neutralInterp T2 (app-neutral n (interpAcc T1 _ i))
 
-\func appAccLeft {V : \Set} {t s : Term V} (a : Acc Red1 (app t s)) : Acc Red1 t
-  => {?} -- это упражнение
+-- \func appAccLeft {V : \Set} {t s : Term V} (a : Acc Red1 (app t s)) : Acc Red1 t
+--   => {?} -- это упражнение
 
 \func interpAcc {V : \Set} (T : Type) (t : Term V) (i : Interp T t) : Acc Red1 t \elim T
   | Unit => i
@@ -238,11 +239,11 @@
   => rewriteF TermMonad.return-right $ typeableInterp ctx var (\lam u => neutralInterp _ var-neutral) p
 
 -- Это более общее утверждение необходимо для усиления индукционной гипотезы.
-\func typeableInterp {U V : \Set} (ctx : U -> Type) (env : U -> Term V)
-                     (C : \Pi (u : U) -> Interp (ctx u) (env u)) {t : Term U} {T : Type}
-                     (p : hasType ctx t T)
-  : Interp T (t >>= env)
-  => {?} -- это упражнение
+-- \func typeableInterp {U V : \Set} (ctx : U -> Type) (env : U -> Term V)
+--                      (C : \Pi (u : U) -> Interp (ctx u) (env u)) {t : Term U} {T : Type}
+--                      (p : hasType ctx t T)
+--   : Interp T (t >>= env)
+--   => {?} -- это упражнение
 
 \func typeableAcc {V : \Set} (ctx : V -> Type) (t : Term V) (T : Type)
                   (h : hasType ctx t T) : Acc Red1 t
