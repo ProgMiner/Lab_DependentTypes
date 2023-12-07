@@ -72,6 +72,22 @@
 -- 5. Докажите следующую обобщенную лемму о подстановке и выведите из нее обычную версию:
 --    если Г, x : A |- b : B и Г |- a : A, то Г |- b[a/x] : B.
 
+\lemma maybe-fmap {A B C : \Set} {c : C} {f : A -> B} {g : B -> C}
+  : maybe c (g o f) = maybe c g o MaybeMonad.fmap f
+  => ext \case \elim __ \with {
+    | nothing => idp
+    | just _ => idp
+  }
+
+\func substLem_termMap {U V : \Set} (ctx : V -> Type) (f : U -> V) (t : Term U) (B : Type)
+                       (p : hasType (ctx o f) t B)
+  : hasType ctx (termMap f t) B \elim t, B, p
+  | unit, Unit, unit-type => unit-type
+  | var v, B, var-type p => var-type p
+  | app t1 t2, B, app-type p1 p2 => app-type (substLem_termMap ctx f t1 _ p1) (substLem_termMap ctx f t2 _ p2)
+  | lam t, Arr B1 B2, lam-type p => lam-type $ substLem_termMap (maybe B1 ctx) (MaybeMonad.fmap f) t B2
+                                             $ rewriteI maybe-fmap p
+
 \func substLem {U V : \Set} (ctx : U -> Type) (b : Term U) (B : Type) (h : hasType ctx b B)
                (ctx' : V -> Type) (a : U -> Term V) (h' : \Pi (u : U) -> hasType ctx' (a u) (ctx u))
   : hasType ctx' (b >>= a) B \elim b, B, h
@@ -81,29 +97,7 @@
   | lam b, Arr B B1, lam-type h => lam-type $ substLem (maybe B ctx) b _ h (maybe B ctx') (liftM a)
                                             $ \case \elim __ \with {
     | nothing => var-type idp
-    | just x => substLem-lemma ctx' (a x) B (ctx x) (h' x)
-  }
-  \where {
-    \func substLem-lemma {V : \Set} (ctx : V -> Type) (t : Term V) (B T : Type) (p : hasType ctx t T)
-      : hasType (maybe B ctx) (termMap just t) T \elim t, T, p
-      | unit, Unit, unit-type => unit-type
-      | var v, T, var-type p => var-type p
-      | app t1 t2, T, app-type p1 p2 => app-type (substLem-lemma ctx t1 B _ p1) (substLem-lemma ctx t2 B _ p2)
-      | lam t, Arr T1 T2, lam-type p => lam-type $ rewrite (termMap-bind t (MaybeMonad.fmap just))
-        $ substLem (maybe T1 ctx) t T2 p (maybe T1 (maybe B ctx)) (var o MaybeMonad.fmap just) \case \elim __ \with {
-        | nothing => var-type idp
-        | just _ => var-type idp
-      }
-
-    \func termMap-bind {V : \Set} (t : Term V) (f : V -> Maybe V)
-      : termMap f t = t >>= var o f \elim t
-      | unit => idp
-      | var _ => idp
-      | app t1 t2 => pmap2 app (termMap-bind t1 f) (termMap-bind t2 f)
-      | lam t => pmap lam $ termMap-bind t (MaybeMonad.fmap f) *> pmap (t >>=) (ext \case \elim __ \with {
-        | nothing => idp
-        | just _ => idp
-      })
+    | just x => substLem_termMap (maybe B ctx') just (a x) (ctx x) (h' x)
   }
 
 \func substLem1 {U : \Set} (ctx : U -> Type) (A B : Type) (a : Term U) (b : Term (Maybe U))
