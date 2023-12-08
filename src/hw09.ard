@@ -65,9 +65,9 @@
 -- 4. Докажите, что нейтральные термы замкнуты относительно редукций.
 
 \func neutralRed {V : \Set} {t s : Term V} (r : Red1 t s) (n : Neutral t) : Neutral s \elim t, s, r, n
-  | app t t1, _, beta p p1, app-neutral n a => \case rewriteF p n
-  | app t t1, app s s1, red-left r p, app-neutral n a => app-neutral (neutralRed r n) $ rewriteF p a
-  | app t t1, app s s1, red-right p r, app-neutral n (acc f) => app-neutral (rewriteF p n) $ f r
+  | app _ _, _, beta p p1, app-neutral n a => \case rewriteF p n
+  | app _ _, app _ _, red-left r p, app-neutral n a => app-neutral (neutralRed r n) $ rewriteF p a
+  | app _ _, app _ _, red-right p r, app-neutral n (acc f) => app-neutral (rewriteF p n) $ f r
 
 -- 5. Докажите следующую обобщенную лемму о подстановке и выведите из нее обычную версию:
 --    если Г, x : A |- b : B и Г |- a : A, то Г |- b[a/x] : B.
@@ -136,32 +136,49 @@
 \func redInterp {V : \Set} {a t s : Term V} (T : Type) (r : HeadRed a t s) (a-acc : Acc Red1 a) (q : Interp T s)
   : Interp T t \elim t, s, r
   | app t1 t2, app s1 s2, headApp r p => {?}
-  | app (lam t1) t2, s, headBeta idp p1 p2 => rewriteI p1 $ cases (T arg addPath) \with {
-    | Unit, pT => acc \lam {a'} r => \case \elim a', \elim r \with {
-      | a', beta {f1} p p3 => rewrite (p3, inv $ lam-inv p, p2) $ interpAcc _ _ q
-      | app (lam a1) a2, red-left (red-lam r) idp => redInterp {_} {a} {_} Unit (headBeta idp idp {?}) a-acc {?}
-      | app a1 a2, red-right idp r => {?}
-      | app (app a'1 a'2) a'3, red-left () p
-      | app (var v) a', red-left () p
-      | app unit a', red-left () p
-    }
-    | Arr T1 T2, pT => \lam {t2} i => {?}
-  }
+  | app (lam t1) t2, s, headBeta idp p1 p2 => {?}
   | app (app t1 t3) t2, s, headBeta p () p2
   | app (var v) t2, s, headBeta p () p2
   | app unit t2, s, headBeta p () p2
 
 -- 8. Докажите typeableInterp из лекции
+
+\lemma termMap-id' {V U : \Set} {t : Term V} (f : V -> U) (g : U -> Term V)
+                   (p : \Pi (v : V) -> var v = g (f v))
+  : t = termMap f t >>= g \elim t
+  | var v => p v
+  | app t1 t2 => pmap2 app (termMap-id' f g p) (termMap-id' f g p)
+  | lam t => pmap lam $ termMap-id' (MaybeMonad.fmap f) (liftM g) $ \case \elim __ \with {
+    | nothing => idp
+    | just v => unfold liftM $ rewriteI (p v) idp
+  }
+  | unit => idp
+
+\lemma termMap-id {V : \Set} {t t' : Term V} : t = termMap just t >>= maybe t' var
+  => termMap-id' just (maybe t' var) \lam _ => idp
+
+-- доказал, а потом оказалось не нужно
+\func substRed1Lem {V U : \Set} {t s : Term V} (f : V -> Term U) (r : Red1 t s)
+  : Red1 (t >>= f) (s >>= f) \elim t, s, r
+  | app t1 t2, s, beta {t} p1 p2 => beta {_} {_} {_} {_} {t >>= liftM f} (pmap (`>>= f) p1)
+    $ pmap (`>>= f) p2 *> Monad.>>=-assoc _ _ _ *> pmap (t >>=) (ext \case \elim __ \with {
+    | nothing => idp
+    | just a => termMap-id
+  }) *> inv (Monad.>>=-assoc _ _ _)
+  | app t1 t2, app s1 s2, red-left r p => red-left (substRed1Lem f r) (pmap (`>>= f) p)
+  | app t1 t2, app s1 s2, red-right p r => red-right (pmap (`>>= f) p) (substRed1Lem f r)
+  | lam t, lam s, red-lam r => red-lam $ substRed1Lem _ r
+
 \func typeableInterp {U V : \Set} (ctx : U -> Type) (env : U -> Term V)
-                     (C : \Pi (u : U) -> Interp (ctx u) (env u)) {t : Term U} {T : Type}
-                     (p : hasType ctx t T)
+                     (C : \Pi (u : U) -> Interp (ctx u) (env u))
+                     {t : Term U} {T : Type} (p : hasType ctx t T)
   : Interp T (t >>= env) \elim t, T, p
   | unit, Unit, unit-type => acc \case \elim __
-  | var v, T, var-type p => {?}
-  | app t1 t2, T, app-type p1 p2 => {?}
+  | var v, T, var-type p => rewriteI p $ C v
+  | app t1 t2, T, app-type p1 p2 => typeableInterp ctx env C p1 $ typeableInterp ctx env C p2
   | lam t, Arr T1 T2, lam-type p => \lam {t1} i =>
       \let i' => typeableInterp (maybe T1 ctx) (\lam x => liftM env x >>= maybe t1 var) (\case \elim __ \with {
         | nothing => i
-        | just u => {?}
+        | just u => rewriteI termMap-id $ C u
       }) p
       \in redInterp T2 (headBeta idp idp (Monad.>>=-assoc _ _ _)) (interpAcc T1 t1 i) i'
