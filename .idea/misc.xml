@@ -17,6 +17,12 @@
         <option name="showTypesInLambda" value="true" />
       </ArendPrintingOptions>
     </option>
+    <option name="goalPrintingOptions">
+      <ArendPrintingOptions>
+        <option name="showCoerceDefinitions" value="true" />
+        <option name="showImplicitArgs" value="true" />
+      </ArendPrintingOptions>
+    </option>
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="Haskell Tool Stack" project-jdk-type="Haskell Tool Stack SDK" />
 </project>
