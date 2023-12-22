@@ -1,15 +1,67 @@
+\import Algebra.Meta
+\import Arith.Nat
+\import Data.List
+\import Function
+\import Function.Meta
 \import Logic
+\import Meta
+\import Order.PartialOrder
+\import Paths
+\import Paths.Meta
+\import hw06 (In, contrProp)
 \import lect12
 
 -- 1. Определите функцию negPred : Int -> Int такую, что negPred x = x, если x > 0, и negPred x = x - 1, если x <= 0.
 
-\func negPred (x : Int) : Int => {?}
+\func negPred (x : Int) : Int
+  | pos 0 => -1
+  | neg n => neg (suc n)
+  | pos (suc _) \as n => n
 
 -- 2. Определите функции сложения и умножения для Int.
 
-\func \infixl 6 + (x y : Int) : Int => {?}
+\func \infixl 6 + (x y : Int) : Int \elim x, y
+  | pos x, pos y => pos (x Nat.+ y)
+  | neg (suc x), neg (suc y) => neg (suc x Nat.+ suc y)
+  | pos 0, neg (suc _) \as y => y
+  | pos (suc x), neg (suc y) => pos x + neg y
+  | neg (suc x), pos 0 => neg (suc x)
+  | neg (suc x), pos (suc y) => neg x + pos y
+  \where {
+    \func test0+0 : 0 + 0 = 0 => idp
 
-\func \infixl 7 * (x y : Int) : Int => {?}
+    \func test0+1 : 0 + 1 = 1 => idp
+    \func test0-1 : 0 + -1 = -1 => idp
+
+    \func test1+1 : 1 + 1 = 2 => idp
+    \func test1-1 : 1 + -1 = 0 => idp
+
+    \func test1+0 : 1 + 0 = 1 => idp
+    \func test-1+0 : -1 + 0 = -1 => idp
+  }
+
+\func \infixl 7 * (x y : Int) : Int \elim y
+  | pos y => i*n x y
+  | neg y => negative $ i*n x y
+  \where {
+    \func i*n (x : Int) (y : Nat) : Int \elim y
+      | 0 => 0
+      | suc y => i*n x y + x
+
+    \func test0*0 : 0 * 0 = 0 => idp
+
+    \func test0*1 : 0 * 1 = 0 => idp
+    \func test0*-1 : 0 * -1 = 0 => idp
+    \func test1*0 : 1 * 0 = 0 => idp
+    \func test-1*0 : -1 * 0 = 0 => idp
+
+    \func test1*1 : 1 * 1 = 1 => idp
+    \func test1*-1 : 1 * -1 = -1 => idp
+    \func test-1*-1 : -1 * -1 = 1 => idp
+    \func test-1*1 : -1 * 1 = -1 => idp
+
+    \func test12*-3 : 12 * -3 = -36 => idp
+  }
 
 -- 3. Определите тип данных BinNat для бинарных натуральных чисел.
 --    У него должно быть три конструктора: для 0, для чисел вида 2*n и чисел вида 2*n+1.
@@ -17,6 +69,15 @@
 --    Используйте типы данных с условиями, чтобы вычислительно отождествить различные нули.
 
 \data BinNat
+  | bn-empty
+  | bn-zero BinNat \with {
+    | bn-empty => bn-empty
+  }
+  | bn-one BinNat
+  \where {
+
+    \func test0-000 : bn-empty = bn-zero (bn-zero bn-empty) => idp
+  }
 
 -- 4. Докажите, что функция pred сюръективна.
 
@@ -24,25 +85,37 @@
   | 0 => 0
   | suc n => n
 
-\func pred-is-sur : isSur pred => {?}
+\func pred-is-sur : isSur pred => \lam b => inP (suc b, idp)
 
 -- 5. Докажите, что функция suc не сюръективна.
 
-\func suc-is-not-sur (p : isSur suc) : Empty => {?}
+\func suc-is-not-sur (p : isSur suc) : Empty => \case p 0 \with {
+  | inP (a, ())
+}
 
 -- 6. Пусть f : A -> B и g : B -> C ─ некоторые функции.
 --    Докажите, что если f и g сюръективны, то g `o` f также сюръективна.
 --    Докажите, что если g `o` f сюръективна, то g также сюръективна.
 
-\func \fixr 9 o {A B C : \Type} (g : B -> C) (f : A -> B) => \lam a => g (f a)
+\func \infixr 9 o {A B C : \Type} (g : B -> C) (f : A -> B) => \lam a => g (f a)
 
-\func o-sur {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur f) (q : isSur g) : isSur (g `o` f) => {?}
+\func o-sur {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur f) (q : isSur g) : isSur (g o f)
+  => \lam c => \case q c \with {
+    | inP (b, q') => \case p b \with {
+      | inP (a, p') => inP (a, pmap g p' *> q')
+    }
+  }
 
-\func o-sur' {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur (g `o` f)) : isSur g => {?}
+\func o-sur' {A B C : \Type} (f : A -> B) (g : B -> C) (p : isSur (g o f)) : isSur g
+  => \lam c => \case p c \with {
+    | inP (a, p') => inP (f a, p')
+  }
 
 -- 7. Определите множество конечных подмножеств множества A, то есть списков элементов A с точностью до перестановок и повторений элементов.
 
-\data Set (A : \Set) : \Set
+\func Set (A : \Set) : \Set => Quotient (List A) R \where {
+  \func R {A : \Set} (xs ys : List A) : \Prop => \Pi {a : A} -> TruncP (In a xs) <-> TruncP (In a ys)
+}
 
 -- 8. Докажите теорему Кантора.
 
@@ -55,19 +128,70 @@
 -- Формально утверждение теоремы Кантора состоит из двух частей:
 -- "существует инъекция из A в Subs A" и "не существует сюръекции из A в Subs A".
 
-\func cantor1 (A : \Set) : \Sigma (f : A -> Subs A) (isInj f)
-  => {?}
+\func cantor1 (A : \Set) : \Sigma (f : A -> Subs A) (isInj f) => (=, =-isInj)
 
 \func cantor2 (A : \Set) (f : A -> Subs A) (p : isSur f) : Empty
-  => {?}
+  => \let | (inP (x, px)) => p (\lam a => Not (f a a))
+          | q : f x x = Not (f x x) => pmap (\lam h => h x) px
+     \in contrProp {f x x} (\lam fxx => transport id q fxx) (\lam nfxx => transport id (inv q) nfxx)
 
 -- Optional
 -- 9. Постройте функции Nat -> BinNat и BinNat -> Nat и докажите, что они взаимно обратны.
 
-\func NatToBinNat (n : Nat) : BinNat => {?}
+\func NatToBinNat (n : Nat) : BinNat => hlp n n \where {
+    \func hlp (fuel : Nat) (n : Nat) : BinNat
+      | 0, _ => bn-empty
+      | suc fuel, 0 => bn-empty
+      | suc fuel, suc _ \as n => \case Nat.divMod n 2 \with {
+        | (m, 0) => bn-zero $ hlp fuel m
+        | (m, 1) => bn-one $ hlp fuel m
+      }
+}
 
-\func BinNatToNat (b : BinNat) : Nat => {?}
+\func BinNatToNat (b : BinNat) : Nat
+  | bn-empty => 0
+  | bn-zero b => BinNatToNat b Nat.* 2
+  | bn-one b => suc $ BinNatToNat b Nat.* 2
 
-\func nbn (n : Nat) : BinNatToNat (NatToBinNat n) = n => {?}
+\func nbn (n : Nat) : BinNatToNat (NatToBinNat n) = n => aux n n linarith \where {
+  \func aux (fuel : Nat) (n : Nat) (p : fuel >= n) : BinNatToNat (NatToBinNat.hlp fuel n) = n \elim fuel, n
+    | 0, 0 => idp
+    | 0, suc n => linarith
+    | suc fuel, 0 => idp
+    | suc fuel, suc n => mcases {_} {arg addPath} \with {
+      | (m, 0), q => \let | q1 : suc n Nat.div 2 = m => pmap (\lam x => x.1) q
+                          | q2 : suc n Nat.mod 2 = 0 => pmap (\lam x => x.2) q
+                          | q' : 2 Nat.* m = suc n => rewriteF (q1, q2) $ Nat.divModProp (suc n) 2
+                          | q'' : m Nat.+ m = suc n => linarith
+                          | p' : suc fuel >= m Nat.+ m => rewrite q'' p
+                     \in rewrite (aux fuel m $ fuel-lem p') q''
+      | (m, 1), q => \let | q1 : suc n Nat.div 2 = m => pmap (\lam x => x.1) q
+                          | q2 : suc n Nat.mod 2 = 1 => pmap (\lam x => x.2) q
+                          | q' : 2 Nat.* m Nat.+ 1 = suc n => rewriteF (q1, q2) $ Nat.divModProp (suc n) 2
+                          | q'' : suc (m Nat.+ m) = suc n => linarith
+                          | p' : suc fuel >= suc (m Nat.+ m) => rewrite q'' p
+                     \in rewrite (aux fuel m linarith) q''
+    }
 
-\func bnb (b : BinNat) : NatToBinNat (BinNatToNat b) = b => {?}
+    \func fuel-lem {n m : Nat} (p : suc n >= m Nat.+ m) : n >= m \elim n, m
+      | 0, 0 => linarith
+      | 0, suc m => linarith
+      | suc n, 0 => linarith
+      | suc n, suc m => \let q => fuel-lem {n} {m} linarith
+                        \in linarith
+}
+
+\func bnb (b : BinNat) : NatToBinNat (BinNatToNat b) = b => aux (BinNatToNat b) b linarith \where {
+  \func aux (fuel : Nat) (b : BinNat) (p : fuel >= BinNatToNat b)
+    : NatToBinNat.hlp fuel (BinNatToNat b) = b => {?}
+}
+  --  | bn-empty => idp
+  --  | bn-zero b => unfold NatToBinNat {?}
+  --  | bn-one b => unfold NatToBinNat $ mcases {_} {arg addPath} \with {
+  --    | (m, 0), p => {?}
+  --    | (m, 1), p => \let | p1 => pmap (\lam x => x.1) p
+  --                        | p2 => pmap (\lam x => x.2) p
+  --                        | q => pmap pred $ rewriteF (p1, p2) $ Nat.divModProp (suc (BinNatToNat b Nat.* 2)) 2
+  --                        | q' : m = BinNatToNat b => linarith
+  --                   \in rewriteI q' $ pmap bn-one $ {?}
+  --  }
