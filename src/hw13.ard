@@ -1,40 +1,615 @@
+\import Algebra.Meta
+\import Arith.Fin
+\import Arith.Nat
 \import Data.Bool
-\import lect12(isInj)
+\import Data.List
+\import Equiv
+\import Equiv.Univalence
+\import Function
+\import Function.Meta \hiding (#)
+\import Logic
+\import Logic.Meta
+\import Meta
+\import Order.LinearOrder
+\import Paths (*>, inv, pmap, propPath)
+\import Paths.Meta
+\import Set
+\import hw03 (reverse, reverse++, reverse-isInvolutive)
+\import hw05
+\import hw08
+\import lect12(equals~, in~, isInj)
 \import lect13
+
+\open Order.LinearOrder.LinearOrder (<=)
+\open NatSemiring (<)
 
 -- 1. Докажите, что add x (add x s) = add x s и add x (add y s) = add y (add x s)
 
 \func add-idemp {S : SetSpec} (x : S.A) (s : S) : add x (add x s) = add x s
-  => {?}
+  => setExt (\lam a => (\lam p => \case add-univ p \with {
+    | byLeft q => rewrite q add-head
+    | byRight q => \case add-univ q \with {
+      | byLeft q' => rewrite q' add-head
+      | byRight q' => add-tail q'
+    }
+  }, add-tail))
 
 \func add-swap {S : SetSpec} (x y : S.A) (s : S) : add x (add y s) = add y (add x s)
-  => {?}
+  => setExt (\lam a => (lem, lem)) \where {
+  \lemma lem {S : SetSpec} {x y a : S.A} {s : S} (p : isElem a (add y (add x s)))
+    : isElem a (add x (add y s)) => \case add-univ p \with {
+    | byLeft q => rewrite q $ add-tail add-head
+    | byRight q => \case add-univ q \with {
+      | byLeft q' => rewrite q' add-head
+      | byRight q' => add-tail $ add-tail q'
+    }
+  }
+}
 
 -- 2. Докажите, что множество подмножеств является инстансом SetSpec
 
-\func subsets {A : \Set} : SetSpec {A} (A -> \Prop)
-  => {?}
+\func subsets {A : \Set} : SetSpec {A} (A -> \Prop) \cowith
+  | empty a => Empty
+  | add x s a => (a = x) || s a
+  | isElem x s => s x
+  | setExt p => ext \lam a => ext $ p a
+  | add-head => byLeft idp
+  | add-tail p => byRight p
+  | add-univ p => p
+  | empty-univ => id
 
 -- 3. Докажите, что множество подмножеств является наибольшим инстансом, то есть любой другой вкладывается в него.
 
 \func subsets-largest (S : SetSpec) : \Sigma (f : S -> (S.A -> \Prop)) (isInj f)
-  => {?}
+  => (\lam s a => isElem a s, \lam s t p => setExt \lam a =>
+      ( \lam q => rewriteI (pmap (\lam h => h a) p) q
+      , \lam q => rewrite (pmap (\lam h => h a) p) q
+      ))
 
 -- 4. Определите функцию isEmpty для произвольного конечного множества и для ListSet.
 
-\func isEmptySet {S : FinSetSpec} (x : S) : Bool => {?}
+\func isEmptySet {S : FinSetSpec} : S -> Bool
+  => rewriteF (listSet=Set {S}) (isEmptyListSet {S.A})
 
-\func isEmptyListSet {A : \Set} (x : ListSet A) : Bool => {?}
+\func isEmptyListSet {A : \Set} (x : ListSet A) : Bool \elim x
+  | in~ nil => true
+  | in~ (_ :: _) => false
+  | equals~ {nil} {nil} r => idp
+  | equals~ {nil} {_ :: _} r => \case EqList-nil r
+  | equals~ {_ :: _} {nil} r => \case EqList-nil $ EqList-swap r
+  | equals~ {_ :: _} {_ :: _} r => idp
+
+\lemma EqList-nil {A : \Set} {xs : List A} (p : EqList nil xs) : xs = nil \elim xs
+  | nil => idp
+  | x :: xs => \case (p x).2 $ here idp
+
+\lemma EqList-not-nil {A : \Set} {x : A} {xs : List A} (p : EqList nil (x :: xs)) : Empty
+  => \case (p x).2 $ here idp
+
+\lemma EqList-swap {A : \Set} {xs ys : List A} (p : EqList xs ys) : EqList ys xs
+  => \lam a => swap $ p a
 
 -- 5. Определите функцию union {A : \Set} : S -> S -> S для произвольного S (удовлетворяющего FinSetSpec) и для ListSet.
 
+\func union {S : FinSetSpec} : S -> S -> S => rewriteF listSet=Set $ unionListSet {S.A}
+
+\func unionListSet {A : \Set} (xs ys : ListSet A) : ListSet A \elim xs, ys
+  | in~ xs, in~ ys => in~ $ xs ++ ys
+  | in~ xs, equals~ {zs} {zs'} r => path $ equals~ $ EqList-right r
+  | equals~ {zs} {zs'} r, in~ ys => path $ equals~ $ EqList-left r
+
+\lemma EqList-left {A : \Set} {xs ys ys' : List A} (p : EqList ys ys') : EqList (ys ++ xs) (ys' ++ xs)
+  => \let | q : EqList (reverse xs ++ reverse ys) (reverse xs ++ reverse ys') => EqList-right $ EqList-reverse p
+          | q' => rewriteF (inv reverse++, inv reverse++) q
+     \in rewriteF (reverse-isInvolutive, reverse-isInvolutive) $ EqList-reverse q'
+
+\lemma EqList-right {A : \Set} {xs ys ys' : List A} (p : EqList ys ys') : EqList (xs ++ ys) (xs ++ ys') \elim xs
+  | nil => p
+  | x :: xs => \let q : EqList (xs ++ ys) (xs ++ ys') => EqList-right p
+               \in \lam a => \let q' => q a
+                             \in (\case \elim __ \with {
+        | here s => here s
+        | there s => there $ q'.1 s
+      }, \case \elim __ \with {
+        | here s => here s
+        | there s => there $ q'.2 s
+      })
+
+\lemma EqList-reverse {A : \Set} {xs ys : List A} (p : EqList xs ys) : EqList (reverse xs) (reverse ys) \elim xs, ys
+  | nil, nil => p
+  | nil, y :: ys => absurd $ EqList-not-nil p
+  | x :: xs, nil => absurd $ EqList-not-nil $ EqList-swap p
+  | x :: xs, y :: ys =>
+    \lam a => \let p' => p a
+              \in ( \lam i => In-reverse $ p'.1 $ rewriteF (reverse-isInvolutive {A} {x :: xs}) $ In-reverse i
+                  , \lam i => In-reverse $ p'.2 $ rewriteF (reverse-isInvolutive {A} {y :: ys}) $ In-reverse i
+                  )
+
+\lemma In-reverse {A : \Set} {x : A} {xs : List A} (p : In x xs) : In x (reverse xs) \elim xs, p
+  | x' :: xs, here idp => In-last
+  | x' :: xs, there p => In-init $ In-reverse p
+  \where {
+    \lemma In-last {A : \Set} {x : A} {xs : List A} : In x (xs ++ x :: nil) \elim xs
+      | nil => here idp
+      | x' :: xs => there In-last
+
+    \lemma In-init {A : \Set} {x x' : A} {xs : List A} (p : In x xs) : In x (xs ++ x' :: nil) \elim xs, p
+      | x'' :: xs, here idp => here idp
+      | x'' :: xs, there p => there $ In-init p
+  }
+
 -- 6. Определите функцию intersection {A : DecSet} : S -> S -> S для произвольного S (удовлетворяющего FinSetSpec) и для ListSet.
 
--- 7. Мы не можем определить функция size в общем случае, но мы можем определить предикат S -> Nat -> \Prop, соответствующий \lam xs n => size xs <= n.
+\func intersection {A : DecSet} {S : FinSetSpec {A}} : S -> S -> S => rewriteF (listSet=Set {S}) intersectionListSet
+
+\func intersectionListSet {A : DecSet} (xs ys : ListSet A) : ListSet A \elim xs, ys
+  | in~ xs, in~ ys => in~ $ filter (elemList ys) xs
+  | in~ xs, equals~ {ys} {ys'} r => path $ equals~ \lam x => later (lem1 r, lem1 $ EqList-swap r)
+  | equals~ {xs} {xs'} r, in~ ys => path $ equals~ \lam x => later (lem2 r, lem2 $ EqList-swap r)
+  \where {
+    \lemma lem1 {A : DecSet} {xs ys ys' : List A} {x : A} (r : EqList ys ys') (p : In x (filter (elemList ys) xs))
+      : In x (filter (elemList ys') xs)
+      => \let (p1, p2) => rewriteF filterElemListIn p
+         \in rewrite filterElemListIn (p1, (r x).1 p2)
+
+    \lemma lem2 {A : DecSet} {xs ys ys' : List A} {x : A} (r : EqList ys ys') (p : In x (filter (elemList xs) ys))
+      : In x (filter (elemList xs) ys')
+      => \let (p1, p2) => rewriteF filterElemListIn p
+         \in rewrite filterElemListIn ((r x).1 p1, p2)
+  }
+
+\func elemList {A : DecSet} (xs : List A) (x : A) : Bool \elim xs
+  | nil => false
+  | x' :: xs => \case A.decideEq x x' \with {
+    | yes _ => true
+    | no n => elemList xs x
+  }
+
+\lemma elemListIn {A : DecSet} {x : A} {xs : List A} : (elemList xs x = true) = In x xs
+  => Equiv-to-= \new Equiv {elemList xs x = true} {In x xs} {
+    | f => elemListIn'.1
+    | sec => elemListIn'.2
+    | ret => elemListIn'.2
+    | ret_f _ => propPath
+    | f_sec _ => propPath
+  }
+
+\lemma elemListIn' {A : DecSet} {x : A} {xs : List A} : (elemList xs x = true) <-> In x xs \elim xs
+  | nil => (\case __ \with {}, \case __ \with {})
+  | x' :: xs => (mcases \with {
+    | yes p => \lam _ => here p
+    | no _ => \lam p => there $ elemListIn'.1 p
+  }, \case \elim __ \with {
+    | here p => mcases \with {
+      | yes _ => idp
+      | no n => absurd $ n p
+    }
+    | there p => mcases $ idp <|> elemListIn'.2 p
+  })
+
+\lemma filterElemListIn {A : DecSet} {x : A} {xs ys : List A}
+  : In x (filter (elemList ys) xs) = (\Sigma (In x xs) (In x ys))
+  => Equiv-to-= \new Equiv {In x (filter (elemList ys) xs)} {\Sigma (In x xs) (In x ys)} {
+    | f => filterElemListIn'.1
+    | ret => filterElemListIn'.2
+    | sec => filterElemListIn'.2
+    | ret_f _ => propPath
+    | f_sec _ => propPath
+  }
+
+\lemma filterElemListIn' {A : DecSet} {x : A} {xs ys : List A}
+  : In x (filter (elemList ys) xs) <-> (\Sigma (In x xs) (In x ys)) \elim xs
+  | nil => (\case __ \with {}, \case __ \with { ((), _) })
+  | x' :: xs => mcases {_} {arg addPath} \with {
+    | true, p => (\case \elim __ \with {
+      | here q => (here q, rewrite (q, inv elemListIn) p)
+      | there q => \let (p1, p2) => filterElemListIn'.1 q
+                   \in (there p1, p2)
+    }, \case \elim __ \with {
+      | (here p, q) => here p
+      | (there p, q) => there $ filterElemListIn'.2 (p, q)
+    })
+    | false, p =>
+      ( \lam q => \let (q1, q2) => filterElemListIn'.1 q
+                  \in (there q1, q2)
+      , \case \elim __ \with {
+        | (here q1, q2) => \case inv p *> rewriteF (q1, inv elemListIn) q2
+        | (there q1, q2) => filterElemListIn'.2 (q1, q2)
+      }
+      )
+  }
+
+-- 7. Мы не можем определить функцию size в общем случае, но мы можем определить предикат S -> Nat -> \Prop, соответствующий \lam xs n => size xs <= n.
 --    Задайте этот предикат и докажите, что он эквивалентен обычному определению, если A -- разрешимо и S -- конечно.
+
+\func SetSizeLE {S : SetSpec} (s : S) (n : Nat) : \Prop
+  => ∃ (f : \Sigma (a : S.A) (isElem a s) -> Fin n) (isInj f)
+
+\lemma SetSizeLE-correct {A : DecSet} {S : FinSetSpec {A}} (s : S) (n : Nat) : SetSizeLE s n = set-size s <= n
+  => {?} -- я не понимаю как это сделать...
+
+\lemma SetSizeLE-correct' {A : DecSet} (s : ListSet A) (n : Nat) : SetSizeLE s n = ListSet-size s <= n
+  => Equiv-to-= \new Equiv {
+    | f => (SetSizeLE-correct'' s n).1
+    | ret => (SetSizeLE-correct'' s n).2
+    | sec => (SetSizeLE-correct'' s n).2
+    | ret_f p => propPath
+    | f_sec p => propPath
+  }
+
+\lemma SetSizeLE-correct'' {A : DecSet} (s : ListSet A) (n : Nat) : SetSizeLE s n <-> ListSet-size s <= n \elim s, n
+  | in~ nil, 0 => (\lam s => \case __ \with {}, \lam _ => inP (\lam (a, p) => \case p \with {}, \lam (a, p) => \case p \with {}))
+  | in~ nil, suc n => (\lam s => \case __ \with {}, \lam _ => inP (\lam (a, p) => \case p \with {}, \lam (a, p) => \case p \with {}))
+  | in~ (x :: xs), 0 => cases (elemList xs x arg addPath) \with {
+    | true, p => (\lam (inP (f, q)) => \case f (x, here idp) \with {}, \lam q =>
+        \let | q' : length (nub xs) = 0 => linarith
+             | q'' => rewriteF length-nil q'
+             | q''' => rewriteF q'' $ nub.nub-EqList {_} {xs}
+             | q'''' => EqList-nil $ EqList-swap q'''
+        \in \case rewriteF q'''' p \with {})
+    | false, p => (\lam (inP (f, q)) => \case f (x, here idp) \with {}, \lam q => absurd $ q <.zero<suc)
+  }
+  | in~ (x :: xs), suc n => cases (elemList xs x arg addPath) \with {
+    | true, p => \let rec => SetSizeLE-correct'' (in~ xs) (suc n)
+                 \in ( \lam (inP (f, q)) => rec.1 $
+      inP ( \lam (a, q') => f (a, there q')
+          , \lam (a, s) (a', s') p1 => \let q'' => q (a, there s) (a', there s') cong
+                                       \in ext $ pmap (\lam (a, s) => a) q''
+          )
+                     , \lam q => \let | (inP (f, q')) => rec.2 q
+                                      | g : \Pi (a : A) (p' : In a (x :: xs)) -> In a xs
+                                      => \lam a => \case \elim __ \with {
+                                          | here p' => rewrite (p', inv elemListIn) p
+                                          | there p' => p'
+                                        }
+                                 \in inP
+              ( \lam (a, q'') => f (a, g a q'')
+              , \lam (a, s) (a', s') p' => \let q'' => q' (a, g a s) (a', g a' s') cong
+                                           \in ext $ pmap (\lam (a, _) => a) q''
+              )
+                     )
+    | false, p => \let rec => SetSizeLE-correct'' (in~ xs) n
+                  \in
+      ( \lam q => \let q' => rec.1 $ pack q \lam i => \case inv p *> rewriteF (inv elemListIn) i \with {}
+                  \in linarith
+      , \lam q => \let | (inP (f, q')) => rec.2 linarith
+                       | g : \Pi (a : A) (n : Not (a = x)) (s : In a (x :: xs)) -> In a xs
+                       => \lam a n => \case \elim __ \with {
+                           | here p' => absurd $ n p'
+                           | there p' => p'
+                         }
+                  \in inP (\lam (a, s) => \case decideEq a x \with {
+          | yes e => zero
+          | no n1 => suc $ f (a, g a n1 s)
+        }, \lam (a, s) (a', s') p1 => cases (decideEq a x, decideEq a' x, p1) \with {
+          | yes e, yes e', _ => ext $ e *> inv e'
+          | no n1, no n2, p1 => \let | p1' : suc (f (a, g a n1 s)) = suc (f (a', g a' n2 s')) => p1
+                                     | q'' => q' (a, g a n1 s) (a', g a' n2 s') $ rewrite Fin-suc p1'
+                               \in ext $ pmap (\lam (a, _) => a) q''
+        })
+      )
+  }
+  \where {
+    \func pack {A : DecSet} {x : A} {xs : List A} {n : Nat} (p : SetSizeLE (in~ (x :: xs)) (suc n))
+      (q : Not (In x xs)) : SetSizeLE (in~ xs) n \elim p
+      | inP (f, p) => \let xIdx => f (x, here idp)
+                      \in inP (\lam (a, s) => \let ans => f (a, there s)
+                                              \in \case decideEq ans xIdx \with {
+            | yes e => \let | e' => p (a, there s) (x, here idp) e
+                            | e'' => pmap (\lam (a, _) => a) e'
+                       \in absurd $ q $ rewriteI e'' s
+            | no n1 => pack' n1
+          }, \lam (a, s) (a', s') p1 => \let | ans => f (a, there s)
+                                             | ans' => f (a', there s')
+                                        \in cases (decideEq ans xIdx, decideEq ans' xIdx, p1) \with {
+            | yes e, yes e', p1 => \let | e' => p (a, there s) (x, here idp) e
+                                        | e'' => pmap (\lam (a, _) => a) e'
+                                   \in absurd $ q $ rewriteI e'' s
+            | yes e, no n1', p1 => \let | e' => p (a, there s) (x, here idp) e
+                                        | e'' => pmap (\lam (a, _) => a) e'
+                                   \in absurd $ q $ rewriteI e'' s
+            | no n1, yes e, p1 => \let | e' => p (a', there s') (x, here idp) e
+                                        | e'' => pmap (\lam (a, _) => a) e'
+                                   \in absurd $ q $ rewriteI e'' s'
+            | no n1, no n1', p1 => \let | p1' : pack' n1 = pack' n1' => p1
+                                        | p2 => pack'isInj n1 n1' p1'
+                                        | p3 => p _ _ p2
+                                   \in ext $ pmap (\lam (a, _) => a) p3
+          })
+
+    \func pack' {n : Nat} {i j : Fin (suc n)} (p : Not (i = j)) : Fin n \elim n, i, j
+      | n, 0, 0 => absurd $ p idp
+      | suc n, 0, suc j => \let z : Fin (suc n) => 0 \in z
+      | suc n, suc i, 0 => i
+      | suc n, suc i, suc j => suc $ pack' {n} {i} {j} \lam q => p $ rewriteI Fin-suc q
+
+    \func pack'isInj {n : Nat} {i i' j : Fin (suc n)} (p : Not (i = j)) (p' : Not (i' = j))
+      (q : pack' p = pack' p') : i = i' \elim n, i, i', j, q
+      | n, 0, 0, 0, q => idp
+      | suc n, 0, 0, suc j, q => idp
+      | suc n, 0, suc i', 0, q => absurd $ p idp
+      | suc n, suc i, 0, 0, q => absurd $ p' idp
+      | suc n, suc i, suc i', 0, q => rewriteI Fin-suc q
+      | suc n, 0, suc i', suc j, ()
+      | suc n, suc i, 0, suc j, ()
+      | suc n, suc i, suc i', suc j, q =>
+        \let | q' => rewriteF (inv Fin-suc) q
+             | q'' => pack'isInj _ _ q'
+        \in rewriteI Fin-suc q''
+  }
+
+\lemma Fin-suc {n : Nat} {x y : Fin n} : (x = y) = (suc x = {Fin (suc n)} suc y)
+  => Equiv-to-= \new Equiv {
+    | f => Fin-suc'.1
+    | ret => Fin-suc'.2
+    | sec => Fin-suc'.2
+    | ret_f _ => propPath
+    | f_sec _ => propPath
+  }
+
+\lemma Fin-suc' {n : Nat} {x y : Fin n} : (x = y) <-> (suc x = {Fin (suc n)} suc y) \elim n, x, y
+  | suc n, 0, 0 => (\lam _ => idp, \lam _ => idp)
+  | suc n, 0, suc y => (\case __ \with {}, \case __ \with {})
+  | suc n, suc x, 0 => (\case __ \with {}, \case __ \with {})
+  | suc n, suc x, suc y => (\lam p => pmap (\lam f => suc f) p, \lam p => pmap (\case \elim __ \with {
+    | 0 => \let z : Fin (suc n) => 0 \in z
+    | suc i => i
+  }) p)
+
+\func set-size {A : DecSet} {S : FinSetSpec {A}} : S -> Nat => rewriteI listSet=Set ListSet-size
+
+\func ListSet-size {A : DecSet} (xs : ListSet A) : Nat \elim xs
+  | in~ xs => length $ nub xs
+  | equals~ {xs} {xs'} r => nub.nub-EqList-length r
+
+\lemma EqList-rec {A : DecSet} {xs ys : List A} (p : \Pi (a : A) -> In a xs -> In a ys)
+  : ∃ (ys' : List A) (EqList xs ys')
+  => inP (filter (elemList xs) ys, \lam a =>
+      ( \lam i => rewrite filterElemListIn (p a i, i)
+      , rewrite filterElemListIn \lam (_, i) => i
+      ))
+
+\func nub {A : DecSet} (xs : List A) : List A \elim xs
+  | nil => nil
+  | x :: xs => \case elemList xs x \with {
+    | true => nub xs
+    | false => x :: nub xs
+  }
+  \where {
+    \lemma nub-EqList-length {A : DecSet} {xs ys : List A} (r : EqList xs ys)
+      : length (nub xs) = length (nub ys) \elim xs
+      | nil => rewrite (EqList-nil r) idp
+      | x :: xs => mcases {_} {arg addPath} \with {
+        | true, p => nub-EqList-length \lam a => (\lam i => (r a).1 $ there i, \lam i => \case (r a).2 i \with {
+          | here p1 => rewrite (inv elemListIn, p1) p
+          | there p1 => p1
+        })
+        | false, p => \let | (inP (ys', q)) => EqList-rec \lam a i => (r a).1 $ there i
+                           | q'' => nub-EqList-length q
+                      \in pmap suc q'' *> EqList-rec-nub-length r q \lam i => \case inv p *> rewriteF (inv elemListIn) i
+      }
+
+    \lemma EqList-rec-nub-length {A : DecSet} {x : A} {xs ys zs : List A} (p : EqList (x :: xs) ys) (q : EqList xs zs)
+      (s : Not (In x xs)) : suc (length (nub zs)) = length (nub ys)
+      => \let | ys' => nub ys
+              | zs' => nub zs
+              | ys'l => length ys'
+              | zs'l => length zs'
+         \in \case decideEq (suc zs'l) ys'l \with {
+          | yes e => e
+          | no n => \let n' : elemList xs x = false => cases (elemList xs x arg addPath) \with {
+            | true, p1 => absurd $ s $ rewriteI elemListIn p1
+            | false, p1 => idp
+          }
+                    \in \case decideCmpNat n \with {
+            | byLeft a => \let (inP (a, ap, aq)) => nub-length-diff {_} {x :: xs} {ys} $ rewrite (n', nub-EqList-length q) a
+                          \in absurd $ aq $ (p a).2 ap
+            | byRight b => \let (inP (a, ap, aq)) => nub-length-diff {_} {ys} {x :: xs} $ rewrite (n', nub-EqList-length q) b
+                           \in absurd $ aq $ (p a).1 ap
+          }
+        }
+
+    \lemma nub-EqList {A : DecSet} {xs : List A} : EqList xs (nub xs) \elim xs
+      | nil => \lam x => (id, id)
+      | x :: xs => mcases {_} {arg addPath} \with {
+        | true, p => \lam a => (\case \elim __ \with {
+          | here q => (nub-EqList a).1 $ rewrite (q, inv elemListIn) p
+          | there q => (nub-EqList a).1 q
+        }, \lam q => there $ (nub-EqList a).2 q)
+        | false, p => \lam a => (\case \elim __ \with {
+          | here q => here q
+          | there q => there $ (nub-EqList a).1 q
+        }, \case \elim __ \with {
+          | here q => here q
+          | there q => there $ (nub-EqList a).2 q
+        })
+      }
+
+    \lemma nub-length {A : DecSet} {xs : List A} : length (nub xs) <= length xs \elim xs
+      | nil => linarith
+      | x :: xs =>
+        \let q : length (nub xs) <= length xs => nub-length
+        \in mcases {_} {arg addPath} \with {
+          | true, p => linarith
+          | false, p => linarith
+        }
+
+    \lemma nub-length-diff {A : DecSet} {xs ys : List A} (p : length (nub xs) < length (nub ys))
+      : ∃ (x : A) (In x ys) (Not (In x xs)) \elim xs, ys, p
+      | nil, y :: ys, _ => inP (y, here idp, \case __)
+      | x :: xs, y :: ys, p => cases (elemList xs x arg addPath, elemList ys y arg addPath, p) \with {
+        | true, q1, true, q2, p => \let (inP (a, p1, p2)) => nub-length-diff p
+                                   \in TruncP.inP (a, there p1, \case \elim __ \with {
+            | here p3 => p2 $ rewrite (p3, inv elemListIn) q1
+            | there p3 => p2 p3
+          })
+        | true, q1, false, q2, p => \let (inP (a, p1, p2)) => nub-length-diff {_} {_} {y :: ys} $ rewrite q2 p
+                                    \in TruncP.inP (a, p1, \case \elim __ \with {
+            | here p3 => p2 $ rewrite (p3, inv elemListIn) q1
+            | there p3 => p2 p3
+          })
+        | false, q1, true, q2, p => \let (inP (a, p1, p2)) => nub-length-diff {_} {x :: xs} $ rewrite q1 p
+                                    \in TruncP.inP (a, there p1, p2)
+        | false, q1, false, q2, <.suc<suc p => \case decideEq x y \with {
+          | yes e => \let (inP (a, p1, p2)) => nub-length-diff p
+                     \in TruncP.inP (a, there p1, \case \elim __ \with {
+              | here p3 => \case inv q2 *> rewriteF (inv elemListIn, p3, e) p1
+              | there p3 => p2 p3
+            })
+          | no n => \let | n' => not-=_== \lam p => n $ inv p
+                         | (inP (a, p1, p2)) => nub-length-diff {_} {xs} {filter (\lam a => not $ a == x) (y :: ys)}
+            $ \case filter-1-nub-length {_} {x} {y :: ys} \with {
+            | byLeft a => \let | a' => pmap pred $ rewriteF (q2, n') a
+                          \in rewrite (n', a') p
+            | byRight b => rewrite (b, q2) linarith
+          }
+                         | (p1', p1'') => rewriteF (filter-1-In {_} {x} {a} {y :: ys}) p1
+                    \in TruncP.inP (a, p1', \case \elim __ \with {
+              | here p3 => p1'' p3
+              | there p3 => p2 p3
+            })
+        }
+      }
+  }
+
+\lemma length-nil {A : \Set} {xs : List A} : (length xs = 0) = (xs = nil)
+  => Equiv-to-= \new Equiv {
+    | f => length-nil'.1
+    | ret => length-nil'.2
+    | sec => length-nil'.2
+    | ret_f _ => propPath
+    | f_sec _ => propPath
+  }
+
+\lemma length-nil' {A : \Set} {xs : List A} : (length xs = 0) <-> (xs = nil) \elim xs
+  | nil => (\lam _ => idp, \lam _ => idp)
+  | x :: xs => (\case __ \with {}, \case __)
+
+\lemma filter-1-nub-length {A : DecSet} {x : A} {xs : List A}
+  : (suc (length (nub (filter (\lam a => not $ a == x) xs))) = length (nub xs))
+  || (length (nub (filter (\lam a => not $ a == x) xs)) = length (nub xs)) \elim xs
+  | nil => byRight idp
+  | x' :: xs => unfold (==) $ cases (decideEq x' x) \with {
+    | yes e => cases (elemList xs x' arg addPath) \with {
+      | true, p => filter-1-nub-length
+      | false, p => \case filter-1-nub-length {_} {x} {xs} \with {
+        | byLeft a => \case filter-1-id {_} {x} {xs} \with {
+          | byLeft a' => rewrite a' $ byLeft idp
+          | byRight b => \case inv p *> rewriteF (inv e, inv elemListIn) b
+        }
+        | byRight b => byLeft $ pmap suc b
+      }
+    }
+    | no n => cases (elemList xs x' arg addPath) \with {
+      | true, p => cases (elemList (filter (\lam a => not $ a == x) xs) x' arg addPath) \with {
+        | true, p1 => filter-1-nub-length
+        | false, p1 => \case filter-1-nub-length {_} {x} {xs} \with {
+          | byLeft a => byRight a
+          | byRight b => \let q => rewriteF (inv filter-1-In) (rewriteF elemListIn p, n)
+                         \in \case inv p1 *> rewriteF (inv elemListIn) q
+        }
+      }
+      | false, p => cases (elemList (filter (\lam a => not $ a == x) xs) x' arg addPath) \with {
+        | true, p1 => \let (q, q') => rewriteF (elemListIn, filter-1-In) p1
+                      \in \case inv p *> rewriteF (inv elemListIn) q
+        | false, p1 => \case filter-1-nub-length {_} {x} {xs} \with {
+          | byLeft a => byLeft $ pmap suc a
+          | byRight b => byRight $ pmap suc b
+        }
+      }
+    }
+  }
+
+\lemma filter-1-In {A : DecSet} {x y : A} {xs : List A}
+  : In y (filter (\lam a => not $ a == x) xs) = (\Sigma (In y xs) (Not (y = x)))
+  => Equiv-to-= \new Equiv {
+    | f => filter-1-In'.1
+    | ret => filter-1-In'.2
+    | sec => filter-1-In'.2
+    | ret_f _ => propPath
+    | f_sec _ => propPath
+  }
+
+\lemma filter-1-In' {A : DecSet} {x y : A} {xs : List A}
+  : In y (filter (\lam a => not $ a == x) xs) <-> (\Sigma (In y xs) (Not (y = x)))
+  => (lem-=>, lem-<=) \where {
+  \lemma lem-=> {A : DecSet} {x y : A} {xs : List A} (p : In y (filter (\lam a => not $ a == x) xs))
+    : \Sigma (In y xs) (Not (y = x)) \elim xs
+    | nil => \case p
+    | x' :: xs => cases (x' == x arg addPath, p) \with {
+      | true, p1, p => \let (q, q1) => lem-=> p \in (there $ q, q1)
+      | false, p1, here p => (here p, rewrite p \lam p2 => not-==_= {_} {x'} {x} (pmap not p1) p2)
+      | false, p1, there p => \let (q, q1) => lem-=> p \in (there q, q1)
+    }
+
+  \lemma lem-<= {A : DecSet} {x y : A} {xs : List A} (p : \Sigma (In y xs) (Not (y = x)))
+    : In y (filter (\lam a => not $ a == x) xs) \elim xs, p
+    | nil, ((), n)
+    | x' :: xs, (here p, n) => unfold (==) $ cases (decideEq x' x) \with {
+      | yes e => absurd $ n $ p *> e
+      | no n1 => here p
+    }
+    | x' :: xs, (there p, n) => unfold (==) $ cases (decideEq x' x) \with {
+      | yes e => lem-<= (p, n)
+      | no n1 => there $ lem-<= (p, n)
+    }
+}
+
+\lemma filter-1-id {A : DecSet} {x : A} {xs : List A}
+  : (filter (\lam a => not $ a == x) xs = xs) || In x xs \elim xs
+  | nil => byLeft idp
+  | x' :: xs => unfold (==) $ cases (decideEq x' x) \with {
+    | yes e => byRight $ here $ inv e
+    | no n => \case filter-1-id {_} {x} {xs} \with {
+      | byLeft a => byLeft $ pmap (x' ::) a
+      | byRight b => byRight $ there b
+    }
+  }
+
+\lemma decideCmpNat {x y : Nat} (p : Not (x = y)) : x < y || y < x \elim x, y
+  | 0, 0 => absurd $ p idp
+  | 0, suc y => byLeft <.zero<suc
+  | suc x, 0 => byRight <.zero<suc
+  | suc x, suc y => \case decideCmpNat (\lam q => p $ pmap suc q) \with {
+    | byLeft q => byLeft $ <.suc<suc q
+    | byRight q => byRight $ <.suc<suc q
+  }
+
+\lemma not-=_== {A : DecSet} {x y : A} (p : Not (x = y)) : not (x == y) = true
+  => cases (x == y arg addPath) \with {
+    | true, p1 => absurd $ p $ ==_= $ rewrite p1 ()
+    | false, p1 => idp
+  }
+
+\lemma not-==_= {A : DecSet} {x y : A} (p : not (x == y) = true) : Not (x = y)
+  => cases (decideEq x y arg addPath) \with {
+    | yes e, p1 => \case rewriteF p1 $ unfold (==) p
+    | no n, _ => n
+  }
 
 -- Optional
 -- 8. Определите предикат isFin : \Type -> \Prop так, чтобы множество \Sigma (P : A -> \Prop) (isFin (\Sigma (a : A) (P a))) удовлетворяло FinSetSpec, определите этот инстанс.
+
+\func isFin (A : \Type) : \Prop => ∃ (xs : List A) (\Pi (a : A) -> In a xs)
+
+\instance isFin-FinSet {A : \Set} : FinSetSpec {A} (\Sigma (P : A -> \Prop) (isFin (\Sigma (a : A) (P a))))
+  | empty => (\lam _ => Empty, inP (nil, \lam (a, p) => \case p \with {}))
+  | add x (P, p) =>
+    \let g : isFin (\Sigma (a : A) (P a)) -> isFin (\Sigma (a : A) ((a = x) || P a))
+    => \case \elim __ \with {
+        | inP (xs, p) => inP ((x, byLeft idp) :: map (\lam (a, q) => (a, byRight q)) xs, \lam (a, q) => \case q \with {
+          | byLeft q => here $ ext q
+          | byRight q => there $ {?}
+        })
+      }
+    \in (\lam a => (a = x) || P a, g p)
+  | isElem x (P, p) => P x
+  | setExt p => ext $ ext $ \lam a => ext $ p a
+  | add-head => {?}
+  | add-tail => {?}
+  | add-univ => {?}
+  | empty-univ => id
+  | set-fin (P, inP (xs, p)) => inP (map (\lam (a, _) => a) xs, \lam a => (\lam q => {?}, {?}))
 
 -- Optional
 -- 9. Определите NubListSet и инстанс FinSetSpec для него.
