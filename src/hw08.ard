@@ -2,21 +2,14 @@
 \import Arith.Nat
 \import Data.Bool
 \import Data.List
-\import Data.Maybe
-\import Data.Or
-\import Data.SeqColimit
 \import Function
 \import Function.Meta
-\import Logic (Empty, Not, TruncP, absurd, inP, truncP)
-\import Logic.Meta
 \import Meta
-\import Order.PartialOrder
 \import Paths
 \import Paths.Meta
-\import Set (decideEq, no, yes)
+\import Set (==)
 \import hw01 (fac)
 \import hw06
-\import hw08_
 \import lect08
 \import Order.LinearOrder
 \open LinearOrder \hiding (<=)
@@ -129,153 +122,67 @@
 
 \data Paren | Left | Right
 
-\func isBalanced (xs : List Paren) : Bool
-  => \case hlp 0 xs \with {
-    | just 0 => true
-    | _ => false
-  }
+\func isBalanced (xs : List Paren) : Bool => hlp 0 xs
   \where {
-    \func hlp (acc : Nat) (xs : List Paren) : Maybe Nat \elim acc, xs
-      | acc, nil => just acc
-      | acc, Left :: xs => hlp (suc acc) xs
-      | 0, Right :: xs => nothing
-      | acc, Right :: xs => hlp (pred acc) xs
+
+    \func hlp (acc : Nat) (xs : List Paren) : Bool \elim xs
+      | nil => acc == 0
+      | Left :: xs => hlp (suc acc) xs
+      | Right :: xs => \case \elim acc \with {
+        | 0 => false
+        | suc acc => hlp acc xs
+      }
 
     \func test1 : isBalanced nil = true => idp
     \func test2 : isBalanced (Left :: Right :: nil) = true => idp
     \func test3 : isBalanced (Left :: Right :: Left :: Right :: nil) = true => idp
     \func test4 : isBalanced (Left :: Left :: Right :: Right :: nil) = true => idp
-    \func test5 : isBalanced (Left :: Left :: Left :: Right :: Right :: Right :: nil) = true => idp
-    \func test6 : isBalanced (Left :: Left :: Right :: Right :: Left :: Right :: nil) = true => idp
-    \func test7 : isBalanced (Left :: Right :: Left :: Left :: Right :: Right :: nil) = true => idp
-    \func test8 : isBalanced (Left :: Right :: Right :: Left :: Right :: Right :: nil) = false => idp
-    \func test9 : isBalanced (Right :: Left :: nil) = false => idp
-    \func test10 : isBalanced (Left :: Right :: Left :: nil) = false => idp
+    \func test5 : isBalanced (Left :: Right :: Right :: Left :: nil) = false => idp
+    \func test6 : isBalanced (Right :: nil) = false => idp
+    \func test7 : isBalanced (Left :: nil) = false => idp
   }
 
 \data Balanced (xs : List Paren) \with
   | nil => nil-balanced
-  | :: Left xs => cons-balanced {ys : List Paren} (Balanced ys) (xs = ys ++ Right :: nil)
+  | Left :: xs => cons-balanced {ys : List Paren} (Balanced ys) (xs = ys ++ Right :: nil)
   | xs => append-balanced {ys zs : List Paren} (Balanced ys) (Balanced zs) (xs = ys ++ zs)
 
-\func isBalanced' (xs : List Paren) : Bool
-  => \case hlp (length xs) xs \with {
-    | (_, nil, _, _) => true
-    | _ => false
-  }
+\data BalPrefix (xs : List Paren) (acc : Nat) \elim acc
+  | 0 => balPrefix-nil (Balanced xs)
+  | suc acc => balPrefix-cons (ys zs : List Paren) (BalPrefix ys acc) (Balanced zs) (xs = ys ++ Left :: zs)
   \where {
-    \func hlp (fuel : Nat) (xs : List Paren) : \Sigma (ys zs : List Paren) (xs = ys ++ zs) (Balanced ys)
-      | 0, xs => (nil, xs, idp, nil-balanced)
-      | suc f, Left :: xs => \case hlp f xs \with {
-        | (ys, Right :: zs, p, b) => \case hlp f zs \with {
-          | (ys', nil, p', b') => \let p1 : Left :: xs = Left :: (ys ++ Right :: nil) ++ ys'
-          => pmap (Left ::) $ p *> pmap (ys ++ Right :: __) (p' *> ListMonoid.ide-right) *> inv ListMonoid.*-assoc
-                                  \in (Left :: xs, nil, equation, append-balanced (cons-balanced b idp) b' p1)
-          | _ => (Left :: ys ++ Right :: nil, zs, equation, cons-balanced b idp)
-        }
-        | (ys, _, p, b) => (nil, Left :: xs, idp, nil-balanced)
-      }
-      | _, xs => (nil, xs, idp, nil-balanced)
+
+    \func concat {xs ys : List Paren} {acc : Nat} (p : BalPrefix xs acc) (q : Balanced ys)
+      : BalPrefix (xs ++ ys) acc \elim acc, p
+      | 0, balPrefix-nil p => balPrefix-nil (append-balanced p q idp)
+      | suc acc, balPrefix-cons ys1 zs p b p1 => balPrefix-cons ys1 (zs ++ ys) p (append-balanced b q idp)
+          (pmap (`++ ys) p1 *> ++-assoc)
   }
 
-\func isBalanced'' {xs : List Paren} (p : isBalanced xs = true) : TruncP (Balanced xs)
-  => hlp (length xs) 0 (\lam i => cases (isBalanced.hlp 0 (take i xs) arg addPath) \with {
-    | just res, p1 => (res, idp, zero<=_)
-    | nothing, p1 => \case rewrite (kill p1) (unfold isBalanced p) \with {}
-  }) (cases (isBalanced.hlp 0 xs arg addPath) \with {
-    | just 0, p1 => idp
-    | nothing, p1 => \case rewrite p1 (unfold isBalanced p) \with {}
-    | just (suc n), p1 => \case rewrite p1 (unfold isBalanced p) \with {}
-  }) <=-refl
+\func isBalanced-correct (xs : List Paren) : (isBalanced xs = true) <-> Balanced xs
+  => (\lam p => =>-lem (balPrefix-nil nil-balanced) p, \lam p => inv $ rewriteF ++_nil $ <=-lem nil 0 p)
   \where {
-    \open hw08_.isBalanced''
 
-    \func hlp (fuel acc : Nat) {xs : List Paren}
-              (p : \Pi (i : Nat) -> \Sigma (res : Nat)
-                                          (isBalanced.hlp acc (take i xs) = just res)
-                                          (acc <= res))
-              (q : isBalanced.hlp acc xs = just acc)
-              (s : length xs <= fuel)
-      : TruncP (Balanced xs) \elim fuel, xs
-      | _, nil => inP nil-balanced
-      | 0, _ :: xs => absurd linarith
-      | suc fuel, Left :: xs => \case hlp-cons (suc fuel) acc p q idp s \with {
-        | inP (zs, nil, p1, b) => inP $ transport (\lam xs' => Balanced xs') (inv $ p1 *> ListMonoid.ide-right) b
-        | inP (zs, z' :: zs', p1, b) => {?}
+    \func =>-lem {xs ys : List Paren} {acc : Nat} (p : BalPrefix xs acc) (q : isBalanced.hlp acc ys = true)
+      : Balanced (xs ++ ys) \elim ys
+      | nil => \case \elim acc, \elim p, \elim q \with {
+        | 0, balPrefix-nil b, q => rewrite ++_nil b
       }
-      | suc fuel, Right :: xs => cases (acc arg addPath, isBalanced.hlp acc (Right :: nil) arg addPath, p 1) \with {
-        | _, _, nothing, _, (_, p3, _) => contradiction
-        | 0, p1, just _, p2, _ => \case rewrite p1 p2 \with {}
-        | 1, p1, just x, p2, (res, p3, p4) => \let z : 0 = res => pmap (unjust 0) $
-          just 0 ==< transport (just 0 = isBalanced.hlp __ (Right :: nil)) (inv p1) idp >==
-          isBalanced.hlp acc (Right :: nil) ==< p2 >==
-          just x ==< p3 >==
-          just res `qed
-                                              \in absurd linarith
-        | suc (suc x'), p1, just x, p2, (res, p3, p4) => \let z : suc x' = res => pmap (unjust 0) $
-          just (suc x') ==< transport (just (suc x') = isBalanced.hlp __ (Right :: nil)) (inv p1) idp >==
-          isBalanced.hlp acc (Right :: nil) ==< p2 >==
-          just x ==< p3 >==
-          just res `qed
-                                              \in absurd linarith
+      | Left :: ys =>
+        \have q' => =>-lem (balPrefix-cons xs nil p nil-balanced idp) q
+        \in rewrite ++-assoc at q' $ q'
+      | Right :: ys => \case \elim xs, \elim acc, \elim p, \elim q \with {
+        | xs, 0, balPrefix-nil _, ()
+        | xs, suc acc, balPrefix-cons ys1 zs p b idp, q =>
+          \have q' => =>-lem (BalPrefix.concat p (cons-balanced b idp)) q
+          \in rewrite (++-assoc, ++-assoc) at q' $ rewrite ++-assoc q'
       }
 
-    \func hlp-cons (fuel acc : Nat) {xs ys : List Paren}
-                   (p : \Pi (i : Nat) -> \Sigma (res : Nat)
-                                                (isBalanced.hlp acc (take i xs) = just res)
-                                                (acc <= res))
-                   (q : isBalanced.hlp acc xs = just acc)
-                   (s : xs = Left :: ys)
-                   (s' : length xs <= fuel)
-      : TruncP (\Sigma (zs zs' : List Paren) (xs = zs ++ zs') (Balanced zs)) \elim fuel, s
-      | 0, idp => absurd linarith
-      | suc fuel, idp =>
-        \case first-acc (length ys) acc 0 xs p (inv hlp-Left-step *> q) idp idp (\lam j pj => contradiction) \with {
-          | inP (i, q', p', pi) =>
-            \let | (zs, zs') => splitAt (suc i) xs
-                 | p1 => last-Right acc i xs idp q' p' pi
-            \in \case hlp fuel (suc acc) {?} {?} {?} \with {
-              | inP a => inP (zs, zs', inv $ splitAt.appendLem (suc i) xs, cons-balanced a p1)
-            }
-        }
-        -- \let | (i, q', p', pi) => first-acc (length ys) acc 0 xs p (inv hlp-Left-step *> q) idp idp (\lam j pj => contradiction)
-        --      | (zs, zs') => splitAt (suc i) xs
-        -- \in (zs, zs', inv $ splitAt.appendLem (suc i) xs, {?})
-
-    \func last-Right (acc i : Nat) (xs : List Paren) {ys : List Paren}
-                     (p : xs = Left :: ys) (q : isBalanced.hlp (suc acc) (take i ys) = just acc)
-                     (t : \Pi (j : Nat) (j NatSemiring.< i) -> \Sigma (res : Nat)
-                                                                      (isBalanced.hlp (suc acc) (take j ys) = just res)
-                                                                      (suc acc <= res))
-                     (pi : i <= length ys)
-      : take i ys = take (pred i) ys ++ Right :: nil \elim i, ys, p
-      | 0, nil, idp => absurd $ sucn/=n $ pmap (unjust 0) q
-      | 0, y :: ys, idp => absurd $ sucn/=n $ pmap (unjust 0) q
-      | suc i, nil, idp => absurd $ sucn/=n $ pmap (unjust 0) q
-      | suc i, y :: ys, idp =>
-        \case hlp-prev-suc acc (suc i) xs idp q t pi \with {
-          | inP (j, pj, q') =>
-             \let | pj => pmap pred pj
-                  | q' => rewriteI pj q'
-             \in \case take-less i (suc i) (y :: ys) linarith \with {
-               | (nil, p1) => \let | ctr1 => take-length' i {y :: ys} linarith
-                                   | ctr2 => take-length' (suc i) {y :: ys} pi
-                                   | p1 => inv ListMonoid.ide-right *> p1
-                                   | p1 => ctr1 *> pmap length p1 *> inv ctr2
-                              \in absurd $ sucn/=n $ inv p1
-               | (Left :: nil, p1) => \case prefix-subst (inv p1) (just (suc acc)) q' \with {
-                   | inl ((), _)
-                   | inr (res', p2, p3) => \let | p2 : res' = suc acc => pmap (unjust 0) p2
-                                                | p3 => rewrite p2 p3
-                                                | zzz : acc = suc (suc acc) => pmap (unjust 0) $ inv q *> p3
-                                           \in absurd linarith
-                 }
-               | (Right :: nil, p1) => inv p1
-               | (z :: z' :: zs, p1) => \let | ctr1 => take-length' i {y :: ys} linarith
-                                             | ctr2 => take-length' (suc i) {y :: ys} pi
-                                             | p1 => inv length_++ *> pmap length p1
-                                             | p1 => p1 *> inv ctr2
-                                        \in absurd $ sucn/=n linarith
-             }
-        }
+    \func <=-lem {xs : List Paren} (ys : List Paren) (acc : Nat) (p : Balanced xs)
+      : isBalanced.hlp acc ys = isBalanced.hlp acc (xs ++ ys) \elim xs, p
+      | nil, nil-balanced => idp
+      | Left :: xs, cons-balanced p idp => rewrite ++-assoc $ <=-lem (Right :: ys) (suc acc) p
+      | xs, append-balanced {ys1} {zs} p1 p2 p3 => \case \elim xs, \elim p3 \with {
+        | xs, idp => <=-lem ys acc p2 *> rewrite ++-assoc (<=-lem (zs ++ ys) acc p1)
+      }
   }
