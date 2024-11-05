@@ -1,3 +1,4 @@
+\import Algebra.Meta
 \import Data.Bool
 \import Equiv
 \import Equiv.Univalence
@@ -130,3 +131,60 @@
 }
 
 -- 7b. Докажите, что (n+m)-элементное множество равно размеченному объединению n- и m-элементных множеств.
+
+\import Data.Or()
+
+\func FinNM=OrFinNFinM (n m : Nat) : Fin (n + m) = Fin n `Or` Fin m => Equiv-to-= (eq n m)
+\where {
+  \open Nat(+)
+  \open Data.Or
+
+  \func eq (n m : Nat) : Equiv {Fin (n + m)} {Fin n `Or` Fin m} \elim m
+    | 0 => \new Equiv {
+      | f => inl
+      | ret => \case __ \with {
+        | inl a => a
+        | inr ()
+      }
+      | sec => \case __ \with {
+        | inl a => a
+        | inr ()
+      }
+      | ret_f _ => idp
+      | f_sec => \case \elim __ \with {
+        | inl a => idp
+        | inr ()
+      }
+    }
+    | suc m =>
+      \let ih : Equiv {Fin (n + m)} {Fin n `Or` Fin m} => eq n m
+      \in \new Equiv {
+        | f => \case __ \with {
+          | 0 => inr 0
+          | suc x => \case ih.f x \with {
+            | inl a => inl a
+            | inr b => inr (suc b)
+          }
+        }
+        | ret => \case __ \with {
+          | inl a => suc (ih.ret (inl a))
+          | inr 0 => 0
+          | inr (suc b) => suc (ih.ret (inr b))
+        }
+        | sec => \case __ \with {
+          | inl a => suc (ih.sec (inl a))
+          | inr 0 => 0
+          | inr (suc b) => suc (ih.sec (inr b))
+        }
+        | ret_f => \case \elim __ \with {
+          | 0 => idp
+          | suc x => cases (ih.f x arg addPath)
+            $ pmap (\lam (y : Fin (n + m)) => suc y) $ inv (pmap ih.ret cong) *> ih.ret_f x
+        }
+        | f_sec => \case \elim __ \with {
+          | inl a => rewrite ih.f_sec idp
+          | inr 0 => idp
+          | inr (suc b) => rewrite ih.f_sec idp
+        }
+      }
+}

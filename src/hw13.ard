@@ -225,17 +225,17 @@
 \func SetSizeLE {S : SetSpec} (s : S) (n : Nat) : \Prop
   => ∃ (f : \Sigma (a : S.A) (isElem a s) -> Fin n) (isInj f)
 
-\lemma SetSizeLE-correct {A : DecSet} {S : FinSetSpec {A}} (s : S) (n : Nat) : SetSizeLE s n = set-size s <= n
-  => {?} -- я не понимаю как это сделать...
+\lemma SetSizeLE-correct {A : DecSet} {S : FinSetSpec {A}} (s : S) (n : Nat) : SetSizeLE s n = set-size s <= n => {?}
+\where {
+
+  \lemma aux {A S : \Set} {pA : DecSet A} {pS : FinSetSpec {A} S} {s : S} (n : Nat)
+             (p : ListSet A = S) (q : pS = ListSetSet {pA})
+    : SetSizeLE s n = set-size s <= n \elim p, q
+    | idp, idp => SetSizeLE-correct' s n *> pmap (`<= n) ({?})
+}
 
 \lemma SetSizeLE-correct' {A : DecSet} (s : ListSet A) (n : Nat) : SetSizeLE s n = ListSet-size s <= n
-  => Equiv-to-= \new Equiv {
-    | f => (SetSizeLE-correct'' s n).1
-    | ret => (SetSizeLE-correct'' s n).2
-    | sec => (SetSizeLE-correct'' s n).2
-    | ret_f p => propPath
-    | f_sec p => propPath
-  }
+  => propExt (SetSizeLE-correct'' s n).1 (SetSizeLE-correct'' s n).2
 
 \lemma SetSizeLE-correct'' {A : DecSet} (s : ListSet A) (n : Nat) : SetSizeLE s n <-> ListSet-size s <= n \elim s, n
   | in~ nil, 0 => (\lam s => \case __ \with {}, \lam _ => inP (\lam (a, p) => \case p \with {}, \lam (a, p) => \case p \with {}))
