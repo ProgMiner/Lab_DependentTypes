@@ -1,8 +1,8 @@
 \import Data.Maybe
+\import Data.Or
 \import Function
 \import Function.Meta
 \import Logic (Not)
-\import Meta
 \import Paths
 \import Paths.Meta
 \import hw06
@@ -12,6 +12,49 @@
 -- 1. Определите отношение многошаговой редукции на Term.
 
 \func Red {V : \Set} : Term V -> Term V -> \Type => ReflTransClosure Red1
+\where {
+
+  \func app-left {V : \Set} {t1 t2 : Term V} (s : Term V) (r : Red t1 t2) : Red (app t1 s) (app t2 s) \elim r
+    | rtc-R r => rtc-R (red-left r idp)
+    | rtc-refl idp => rtc-refl idp
+    | rtc-trans r1 r2 => rtc-trans (app-left s r1) (app-left s r2)
+
+  \func app-right {V : \Set} {s1 s2 : Term V} (t : Term V) (r : Red s1 s2) : Red (app t s1) (app t s2) \elim r
+    | rtc-R r => rtc-R (red-right idp r)
+    | rtc-refl idp => rtc-refl idp
+    | rtc-trans r1 r2 => rtc-trans (app-right t r1) (app-right t r2)
+
+  \func in-lam {V : \Set} {t1 t2 : Term (Maybe V)} (r : Red t1 t2) : Red (lam t1) (lam t2) \elim r
+    | rtc-R r => rtc-R (red-lam r)
+    | rtc-refl idp => rtc-refl idp
+    | rtc-trans r1 r2 => rtc-trans (in-lam r1) (in-lam r2)
+
+  \func forAcc {V : \Set} {t t' : Term V} (a : Acc Red1 t) (r : Red t t') : Acc Red1 t' \elim r
+    | rtc-R r => \case \elim a \with { | acc f => f r }
+    | rtc-refl idp => a
+    | rtc-trans r1 r2 => forAcc (forAcc a r1) r2
+
+  \func over-termMap {V U : \Set} {t t' : Term V} (f : V -> U) (r : Red t t') : Red (termMap f t) (termMap f t') \elim r
+    | rtc-R r => rtc-R (red1_termMap f r)
+    | rtc-refl idp => rtc-refl idp
+    | rtc-trans r1 r2 => rtc-trans (over-termMap f r1) (over-termMap f r2)
+  \where {
+
+    \func red1_termMap {V U : \Set} (f : V -> U) {t t' : Term V} (r : Red1 t t')
+      : Red1 (termMap f t) (termMap f t') \elim t, t', r
+      | app t1 t2, t', beta {f1} idp p => beta idp
+        $ pmap (termMap _ __) p
+        *> inv (TermMonad.termMap_>>=-right _ _ _)
+        *> pmap (f1 >>=) (ext \case \elim __ \with {
+          | nothing => idp
+          | just v => idp
+          })
+        *> inv (TermMonad.termMap_>>=-left _ _ _)
+      | app t1 t2, app t1' t2', red-left r idp => red-left (red1_termMap f r) idp
+      | app t1 t2, app t1' t2', red-right idp r => red-right idp (red1_termMap f r)
+      | lam t, lam t', red-lam r => red-lam (red1_termMap _ r)
+  }
+}
 
 -- 2. Стратегия редукции -- это функция, которая каждому терму сопоставляет либо некоторый терм,
 --    к которому он редуцируется за 1 шаг, либо доказательство, что таких термов нет.
@@ -130,55 +173,89 @@
   | app t1 t2, app s1 s2 => headApp (HeadRed a t1 s1) (t2 = s2)
   | app t a', s => headBeta {f : Term (Maybe V)} (a = a') (lam f = t) (f >>= maybe a var = s)
 
-\lemma lam-inv {V : \Set} {t t' : Term (Maybe V)} (p : lam t = lam t') : t = t'
-  => pmap (\case \elim __ \with { | lam x => x | _ => unit }) p
+\func red_>>= {V U : \Set} {t t' : Term V} (a : V -> Term U) (r : Red1 t t') : Red1 (t >>= a) (t' >>= a) \elim t, t', r
+  | app t1 t2, t', beta {f} idp p => rewrite p
+    $ beta idp (>>=-assoc _ _ _ *> pmap (f >>=) (ext (\case \elim __ \with {
+      | nothing => idp
+      | just v => return-left v a *> inv (return-right (a v)) *> inv (TermMonad.termMap_>>=-left _ _ _)
+    })) *> inv (>>=-assoc _ _ _))
+  | app t1 t2, app t1' t2', red-left r idp => red-left (red_>>= _ r) idp
+  | app t1 t2, app t1' t2', red-right idp r => red-right idp (red_>>= _ r)
+  | lam t, lam t', red-lam r => red-lam (red_>>= _ r)
 
-\func redInterp {V : \Set} {a t s : Term V} (T : Type) (r : HeadRed a t s) (a-acc : Acc Red1 a) (q : Interp T s)
-  : Interp T t \elim t, s, r
-  | app t1 t2, app s1 s2, headApp r p => {?}
-  | app (lam t1) t2, s, headBeta idp p1 p2 => {?}
-  | app (app t1 t3) t2, s, headBeta p () p2
-  | app (var v) t2, s, headBeta p () p2
-  | app unit t2, s, headBeta p () p2
+\func redInSubst {V U : \Set} (f : Term V) (a a' : V -> Term U) (r : \Pi (v : V) -> Red (a v) (a' v))
+  : Red (f >>= a) (f >>= a') \elim f
+  | unit => rtc-refl idp
+  | var v => r v
+  | app f1 f2 =>
+    \have | r1 => redInSubst f1 a a' r
+          | r2 => redInSubst f2 a a' r
+    \in rtc-trans (Red.app-left _ r1) (Red.app-right _ r2)
+  | lam f =>
+    \have | r' => redInSubst f (liftM a) (liftM a') (\case \elim __ \with {
+      | nothing => rtc-refl idp
+      | just v => Red.over-termMap _ (r v)
+    })
+    \in Red.in-lam r'
+
+\func headRedTrans {V : \Set} {a t t' s : Term V} (p : HeadRed a t s) (r : Red1 t t')
+  : (\Sigma (s' : Term V) (HeadRed a t' s') (Red1 s s'))
+  `Or` (\Sigma (a' s' : Term V) (HeadRed a' t' s') (Red1 a a') (Red s s'))
+         `Or` (t' = s)
+\elim t, t', s, p, r
+  | app t1 t2, t', app s1 s2, headApp p idp, beta p2 p3 => \case rewriteF p2 p
+  | app t1 t2, app t1' t2', app s s1, headApp p idp, red-left r idp => \case headRedTrans p r \with {
+    | inl (s', p', r') => inl (app s' t2, headApp p' idp, red-left r' idp)
+    | inr (inl (a', s', p', r1, r2)) => inr $ inl (a', app s' t2, headApp p' idp, r1, Red.app-left t2 r2)
+    | inr (inr b) => inr $ inr $ rewrite b idp
+  }
+  | app t1 t2, app t1' t2', app s1 s2, headApp p idp, red-right idp r => inl (app s1 t2', headApp p idp, red-right idp r)
+  | app t1 t2, t', s, headBeta {f} idp idp p, beta {f1} p1 p2 =>
+    \have p1 : f = f1 => path $ \case p1 __ \with { | lam t => t | _ => unit }
+    \in inr $ inr $ p2 *> pmap (`>>= _) (inv p1) *> p
+  | app unit t2, app t1' t2', s, headBeta idp () p, _
+  | app (var v) t2, app t1' t2', s, headBeta idp () p, _
+  | app (app t1 t2) t3, app t1' t3', s, headBeta idp () p, _
+  | app (lam t1) t2, app unit t2', s, headBeta idp _ p, red-left () _
+  | app (lam t1) t2, app (var v) t2', s, headBeta idp _ p, red-left () _
+  | app (lam t1) t2, app (app t1'1 t1'2) t2', s, headBeta idp _ p, red-left () _
+  | app (lam t1) t2, app (lam t1') t2', s, headBeta {f} idp p1 p2, red-left (red-lam r) idp =>
+    \have | p1' : f = t1 => path $ \case p1 __ \with { | lam t => t | _ => unit }
+          | p2' => rewriteF p1' p2
+    \in rewriteI p2' $ inl (t1' >>= maybe a var, headBeta idp idp idp, red_>>= _ r)
+  | app t1 t2, app t1' t2', s, headBeta {f} idp idp p, red-right idp r =>
+    \have | rs (v : Maybe V) : Red (maybe a var v) (maybe t2' var v) => \case \elim v \with {
+      | nothing => rtc-R r
+      | just v => rtc-refl idp
+    }
+          | r' : Red (f >>= maybe a var) (f >>= maybe t2' var) => redInSubst _ _ _ rs
+    \in inr $ inl (t2', f >>= maybe t2' var, headBeta idp idp idp, r, rewriteI p r')
+
+\func headRedAcc {V : \Set} {a t s : Term V} (p : HeadRed a t s)
+                 (accA : Acc Red1 a) (accS : Acc Red1 s) : Acc Red1 t \elim accA, accS
+  | acc f, acc g => acc (\lam r => \case headRedTrans p r \with {
+    | inl (s', p', r') => headRedAcc p' (acc f) (g r')
+    | inr (inl (a', s', p', r1, r2)) => headRedAcc p' (f r1) (Red.forAcc (acc g) r2)
+    | inr (inr b) => rewrite b (acc g)
+  })
+
+\func redInterp {V : \Set} {a t s : Term V} {T : Type} (r : HeadRed a t s)
+                (acc : Acc Red1 a) (q : Interp T s) : Interp T t \elim T
+  | Unit => headRedAcc r acc q
+  | Arr T1 T2 => \lam i => redInterp (headApp r idp) acc (q i)
 
 -- 8. Докажите typeableInterp из лекции
-
-\lemma termMap-id' {V U : \Set} {t : Term V} (f : V -> U) (g : U -> Term V)
-                   (p : \Pi (v : V) -> var v = g (f v))
-  : t = termMap f t >>= g \elim t
-  | var v => p v
-  | app t1 t2 => pmap2 app (termMap-id' f g p) (termMap-id' f g p)
-  | lam t => pmap lam $ termMap-id' (MaybeMonad.fmap f) (liftM g) $ \case \elim __ \with {
-    | nothing => idp
-    | just v => unfold liftM $ rewriteI (p v) idp
-  }
-  | unit => idp
-
-\lemma termMap-id {V : \Set} {t t' : Term V} : t = termMap just t >>= maybe t' var
-  => termMap-id' just (maybe t' var) \lam _ => idp
-
--- доказал, а потом оказалось не нужно
-\func substRed1Lem {V U : \Set} {t s : Term V} (f : V -> Term U) (r : Red1 t s)
-  : Red1 (t >>= f) (s >>= f) \elim t, s, r
-  | app t1 t2, s, beta {t} p1 p2 => beta {_} {_} {_} {_} {t >>= liftM f} (pmap (`>>= f) p1)
-    $ pmap (`>>= f) p2 *> Monad.>>=-assoc _ _ _ *> pmap (t >>=) (ext \case \elim __ \with {
-    | nothing => idp
-    | just a => termMap-id
-  }) *> inv (Monad.>>=-assoc _ _ _)
-  | app t1 t2, app s1 s2, red-left r p => red-left (substRed1Lem f r) (pmap (`>>= f) p)
-  | app t1 t2, app s1 s2, red-right p r => red-right (pmap (`>>= f) p) (substRed1Lem f r)
-  | lam t, lam s, red-lam r => red-lam $ substRed1Lem _ r
 
 \func typeableInterp {U V : \Set} (ctx : U -> Type) (env : U -> Term V)
                      (C : \Pi (u : U) -> Interp (ctx u) (env u))
                      {t : Term U} {T : Type} (p : hasType ctx t T)
   : Interp T (t >>= env) \elim t, T, p
   | unit, Unit, unit-type => acc \case \elim __
-  | var v, T, var-type p => rewriteI p $ C v
+  | var v, T, var-type idp => C v
   | app t1 t2, T, app-type p1 p2 => typeableInterp ctx env C p1 $ typeableInterp ctx env C p2
   | lam t, Arr T1 T2, lam-type p => \lam {t1} i =>
-      \let i' => typeableInterp (maybe T1 ctx) (\lam x => liftM env x >>= maybe t1 var) (\case \elim __ \with {
+      \have i' => typeableInterp (maybe T1 ctx) (\lam x => liftM env x >>= maybe t1 var) (\case \elim __ \with {
         | nothing => i
-        | just u => rewriteI termMap-id $ C u
+        | just u => rewrite (TermMonad.termMap_>>=-left, TermMonad.return-right) (C u)
       }) p
-      \in redInterp T2 (headBeta idp idp (Monad.>>=-assoc _ _ _)) (interpAcc T1 t1 i) i'
+      \in redInterp (headBeta idp idp (Monad.>>=-assoc _ _ _)) (interpAcc T1 t1 i) i'
